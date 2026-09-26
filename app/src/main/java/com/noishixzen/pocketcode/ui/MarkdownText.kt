@@ -2,6 +2,7 @@ package com.noishixzen.pocketcode.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -209,19 +210,47 @@ private fun CodeSnippetBlock(block: MarkdownBlock.CodeBlock, onRunCode: ((String
                     fontFamily = FontFamily.Monospace,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val shellLanguage = block.language.lowercase() in setOf("", "bash", "sh", "shell", "zsh", "console", "terminal")
-                    if (onRunCode != null && shellLanguage) {
-                        IconButton(
-                            onClick = { onRunCode(block.code.trim()) },
-                            modifier = Modifier.size(28.dp),
+                    val trimmed = block.code.trim()
+                    val lang = block.language.lowercase().trim()
+                    val isCommand = lang in setOf("", "bash", "sh", "shell", "zsh", "console", "terminal", "cmd", "npm", "npx", "yarn", "pnpm", "bun", "node", "powershell", "ps1", "cli", "run", "sh-session") ||
+                        trimmed.lines().any { line ->
+                            val l = line.trim()
+                            l.startsWith("npm") || l.startsWith("npx") || l.startsWith("yarn") ||
+                            l.startsWith("pnpm") || l.startsWith("bun") || l.startsWith("node") ||
+                            l.startsWith("python") || l.startsWith("pip") || l.startsWith("git") ||
+                            l.startsWith("cd ") || l.startsWith("./") || l.startsWith("gradlew") ||
+                            l.startsWith("flutter") || l.startsWith("cargo") || l.startsWith("curl") ||
+                            l.startsWith("make") || l.startsWith("docker") || l.startsWith("echo")
+                        } || (trimmed.lines().size <= 5 && !trimmed.contains("class ") && !trimmed.contains("import ") && !trimmed.contains("public "))
+
+                    if (onRunCode != null && isCommand) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = PocketOrange.copy(alpha = 0.16f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onRunCode(trimmed) },
                         ) {
-                            Icon(
-                                Icons.Default.PlayArrow,
-                                contentDescription = "Run in project terminal",
-                                tint = PocketOrange,
-                                modifier = Modifier.size(18.dp),
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = "Run in project terminal",
+                                    tint = PocketOrange,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    "Run",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PocketOrange,
+                                )
+                            }
                         }
+                        Spacer(Modifier.width(6.dp))
                     }
                     IconButton(
                         onClick = {

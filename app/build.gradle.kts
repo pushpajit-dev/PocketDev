@@ -70,7 +70,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.noishixzen.pocketcode"
+        applicationId = "com.noishixzen.pocketdev"
         minSdk = 28
         // The direct APK retains the proven target-28 PRoot execution path. The
         // Play build targets current Android while its runtime path is validated.

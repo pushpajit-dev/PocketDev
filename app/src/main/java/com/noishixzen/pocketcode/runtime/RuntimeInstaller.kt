@@ -539,7 +539,7 @@ class RuntimeInstaller(private val context: Context) {
             from = fraction,
             to = 0.995f,
             onProgress = onProgress,
-            forceEmbedded = true,
+            forceEmbedded = false,
         )
         verifyGuest(proot, "$AGY_GUEST_PATH --version", "Antigravity CLI verification failed")
         agyMarker.writeText(AGY_VERSION)
@@ -931,31 +931,51 @@ class RuntimeInstaller(private val context: Context) {
     ): File {
         downloads.mkdirs()
         val destination = File(downloads, bundle.fileName)
-        val useEmbedded = preferEmbedded || BuildConfig.OFFLINE_RUNTIME_BUNDLES
+
+        // If file was already downloaded/staged and matches checksum, reuse it immediately
+        if (destination.isFile && digest(destination, "SHA-256").equals(bundle.sha256, ignoreCase = true)) {
+            onProgress(RuntimeInstallProgress("${bundle.label} is ready", to, bundle.compressedBytes, bundle.compressedBytes))
+            return destination
+        }
+
+        val hasAsset = runCatching {
+            context.assets.open("runtime/${bundle.fileName}").use { }
+            true
+        }.getOrDefault(false)
+
+        val useEmbedded = (preferEmbedded || BuildConfig.OFFLINE_RUNTIME_BUNDLES) && hasAsset
         if (useEmbedded) {
-            onProgress(RuntimeInstallProgress("Loading ${bundle.label} bundle", from, 0, bundle.compressedBytes))
-            val temporary = File(downloads, "${bundle.fileName}.part")
-            context.assets.open("runtime/${bundle.fileName}").use { input ->
-                FileOutputStream(temporary).use { output ->
-                    val buffer = ByteArray(256 * 1024)
-                    var copied = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        output.write(buffer, 0, count)
-                        copied += count
-                        val ratio = (copied.toFloat() / bundle.compressedBytes).coerceIn(0f, 1f)
-                        onProgress(RuntimeInstallProgress("Loading ${bundle.label} bundle", from + ratio * (to - from), copied, bundle.compressedBytes))
+            val assetLoaded = runCatching {
+                onProgress(RuntimeInstallProgress("Loading ${bundle.label} bundle", from, 0, bundle.compressedBytes))
+                val temporary = File(downloads, "${bundle.fileName}.part")
+                context.assets.open("runtime/${bundle.fileName}").use { input ->
+                    FileOutputStream(temporary).use { output ->
+                        val buffer = ByteArray(256 * 1024)
+                        var copied = 0L
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            copied += count
+                            val ratio = (copied.toFloat() / bundle.compressedBytes).coerceIn(0f, 1f)
+                            onProgress(RuntimeInstallProgress("Loading ${bundle.label} bundle", from + ratio * (to - from), copied, bundle.compressedBytes))
+                        }
                     }
                 }
+                require(digest(temporary, "SHA-256").equals(bundle.sha256, ignoreCase = true)) {
+                    "${bundle.label} bundle checksum mismatch"
+                }
+                if (destination.exists()) destination.delete()
+                check(temporary.renameTo(destination)) { "Could not stage the ${bundle.label} bundle" }
+                destination
             }
-            require(digest(temporary, "SHA-256").equals(bundle.sha256, ignoreCase = true)) {
-                "${bundle.label} bundle checksum mismatch"
+
+            if (assetLoaded.isSuccess) {
+                return destination
+            } else {
+                android.util.Log.w("RuntimeInstaller", "Embedded load failed for ${bundle.label}: ${assetLoaded.exceptionOrNull()?.message}, falling back to network")
             }
-            if (destination.exists()) destination.delete()
-            check(temporary.renameTo(destination)) { "Could not stage the ${bundle.label} bundle" }
-            return destination
         }
 
         val url = "${BuildConfig.RUNTIME_RELEASE_BASE_URL}/${bundle.fileName}"
@@ -1747,6 +1767,37 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decis
         return file
     }
 
+    private fun openConnectionWithRedirects(initialUrl: String, existingBytes: Long = 0L): HttpURLConnection {
+        var currentUrl = initialUrl
+        var redirects = 0
+        while (redirects < 8) {
+            val connection = URL(currentUrl).openConnection() as HttpURLConnection
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 120_000
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("User-Agent", "PocketCode-Android")
+            if (existingBytes > 0L) {
+                connection.setRequestProperty("Range", "bytes=$existingBytes-")
+            }
+            val code = connection.responseCode
+            if (code in listOf(HttpURLConnection.HTTP_MOVED_PERM, HttpURLConnection.HTTP_MOVED_TEMP, HttpURLConnection.HTTP_SEE_OTHER, 307, 308)) {
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
+                if (!location.isNullOrBlank()) {
+                    currentUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+                        location
+                    } else {
+                        URL(URL(currentUrl), location).toString()
+                    }
+                    redirects++
+                    continue
+                }
+            }
+            return connection
+        }
+        error("Too many redirects ($redirects) for $initialUrl")
+    }
+
     private suspend fun downloadVerified(
         url: String,
         destination: File,
@@ -1760,40 +1811,55 @@ printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decis
             return
         }
         val temporary = File(destination.parentFile, "${destination.name}.part")
-        var existing = temporary.takeIf(File::isFile)?.length() ?: 0L
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 20_000
-        connection.readTimeout = 120_000
-        connection.instanceFollowRedirects = true
-        if (existing > 0L) connection.setRequestProperty("Range", "bytes=$existing-")
-        check(connection.responseCode in 200..299) { "Download failed with HTTP ${connection.responseCode}" }
-        val resumed = connection.responseCode == HttpURLConnection.HTTP_PARTIAL && existing > 0L
-        if (!resumed) {
-            temporary.delete()
-            existing = 0L
-        }
-        val total = connection.contentLengthLong.takeIf { it >= 0L }?.plus(existing) ?: -1L
-        connection.inputStream.use { input ->
-            FileOutputStream(temporary, resumed).use { output ->
-                val buffer = ByteArray(128 * 1024)
-                var downloaded = existing
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    output.write(buffer, 0, count)
-                    downloaded += count
-                    onBytes(downloaded, total)
+        var attempts = 0
+        var lastError: Exception? = null
+
+        while (attempts < 4) {
+            attempts++
+            try {
+                coroutineContext.ensureActive()
+                var existing = temporary.takeIf(File::isFile)?.length() ?: 0L
+                val connection = openConnectionWithRedirects(url, existing)
+                val code = connection.responseCode
+                check(code in 200..299) { "Download failed with HTTP $code from $url" }
+                val resumed = code == HttpURLConnection.HTTP_PARTIAL && existing > 0L
+                if (!resumed) {
+                    temporary.delete()
+                    existing = 0L
+                }
+                val total = connection.contentLengthLong.takeIf { it >= 0L }?.plus(existing) ?: -1L
+                connection.inputStream.use { input ->
+                    FileOutputStream(temporary, resumed).use { output ->
+                        val buffer = ByteArray(128 * 1024)
+                        var downloaded = existing
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            onBytes(downloaded, total)
+                        }
+                    }
+                }
+                connection.disconnect()
+                val actual = digest(temporary, algorithm)
+                if (!actual.equals(expectedChecksum, ignoreCase = true)) {
+                    temporary.delete()
+                    error("Downloaded file checksum mismatch (expected $expectedChecksum, got $actual)")
+                }
+                destination.delete()
+                check(temporary.renameTo(destination)) { "Could not finish download" }
+                return
+            } catch (e: Exception) {
+                lastError = e
+                android.util.Log.w("RuntimeInstaller", "Download attempt $attempts failed for $url: ${e.message}")
+                if (attempts < 4) {
+                    delay(1000L * attempts)
                 }
             }
         }
-        connection.disconnect()
-        val actual = digest(temporary, algorithm)
-        if (!actual.equals(expectedChecksum, ignoreCase = true)) {
-            temporary.delete()
-            error("Downloaded file checksum did not match")
-        }
-        destination.delete()
-        check(temporary.renameTo(destination)) { "Could not finish download" }
+        throw lastError ?: java.io.IOException("Failed to download $url after $attempts attempts")
     }
 
     private fun fetchText(url: String): String {

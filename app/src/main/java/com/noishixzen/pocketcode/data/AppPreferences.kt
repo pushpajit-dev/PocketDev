@@ -134,6 +134,46 @@ class AppPreferences(private val context: Context) {
             preferences.edit().putString("selected_dev_stacks", arr.toString()).apply()
         }
 
+    // --- Performance, Editor & AI Tweaks ---
+    var smooth120Hz: Boolean
+        get() = preferences.getBoolean("tweak_smooth_120hz", true)
+        set(value) { preferences.edit().putBoolean("tweak_smooth_120hz", value).apply() }
+
+    var hapticFeedback: Boolean
+        get() = preferences.getBoolean("tweak_haptics", true)
+        set(value) { preferences.edit().putBoolean("tweak_haptics", value).apply() }
+
+    var amoledBlack: Boolean
+        get() = preferences.getBoolean("tweak_amoled_black", false)
+        set(value) { preferences.edit().putBoolean("tweak_amoled_black", value).apply() }
+
+    var editorFontSize: Int
+        get() = preferences.getInt("tweak_editor_font_size", 13)
+        set(value) { preferences.edit().putInt("tweak_editor_font_size", value).apply() }
+
+    var editorLineNumbers: Boolean
+        get() = preferences.getBoolean("tweak_editor_line_numbers", true)
+        set(value) { preferences.edit().putBoolean("tweak_editor_line_numbers", value).apply() }
+
+    var editorWordWrap: Boolean
+        get() = preferences.getBoolean("tweak_editor_word_wrap", true)
+        set(value) { preferences.edit().putBoolean("tweak_editor_word_wrap", value).apply() }
+
+    var editorTabSize: Int
+        get() = preferences.getInt("tweak_editor_tab_size", 2)
+        set(value) { preferences.edit().putInt("tweak_editor_tab_size", value).apply() }
+
+    var maxOutputTokens: Int
+        get() = preferences.getInt("tweak_max_tokens", 4096)
+        set(value) { preferences.edit().putInt("tweak_max_tokens", value).apply() }
+
+    var modelTemperature: Float
+        get() = preferences.getFloat("tweak_temperature", 0.7f)
+        set(value) { preferences.edit().putFloat("tweak_temperature", value).apply() }
+
+    var autoRetryRateLimits: Boolean
+        get() = preferences.getBoolean("tweak_auto_retry", true)
+        set(value) { preferences.edit().putBoolean("tweak_auto_retry", value).apply() }
 
     fun saveProvider(profile: ProviderProfile, agent: AgentKind? = null) {
         val editor = preferences.edit()

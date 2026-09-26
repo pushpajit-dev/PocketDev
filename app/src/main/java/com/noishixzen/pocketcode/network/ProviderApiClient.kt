@@ -62,6 +62,12 @@ class ProviderApiClient {
                 response.error != null -> lastMessage = response.error
             }
         }
+        if (!authError) {
+            val fallback = getFallbackModels(protocol, baseUrl)
+            if (fallback.isNotEmpty()) {
+                return@withContext ModelDiscoveryResult.Success(fallback, "Catalog defaults")
+            }
+        }
         ModelDiscoveryResult.Failure(
             if (authError) "Check the saved API key, then try refreshing again." else lastMessage,
             lastProviderMessage,
@@ -254,6 +260,43 @@ class ProviderApiClient {
             .replace(Regex("\\s+"), " ")
             .trim()
             .take(280)
+    }
+
+    fun getFallbackModels(protocol: ProviderProtocol, baseUrl: String): List<DiscoveredModel> {
+        val lowerUrl = baseUrl.lowercase()
+        return when {
+            lowerUrl.contains("anthropic") || protocol == ProviderProtocol.ANTHROPIC || protocol == ProviderProtocol.ANTHROPIC_GATEWAY -> listOf(
+                DiscoveredModel("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet (Latest)"),
+                DiscoveredModel("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet"),
+                DiscoveredModel("claude-3-5-haiku-20241022", "Claude 3.5 Haiku"),
+                DiscoveredModel("claude-3-opus-20240229", "Claude 3 Opus"),
+            )
+            lowerUrl.contains("deepseek") -> listOf(
+                DiscoveredModel("deepseek-chat", "DeepSeek Chat (V3)"),
+                DiscoveredModel("deepseek-reasoner", "DeepSeek Reasoner (R1)"),
+            )
+            lowerUrl.contains("openrouter") || protocol == ProviderProtocol.OPENROUTER -> listOf(
+                DiscoveredModel("anthropic/claude-3.7-sonnet", "Claude 3.7 Sonnet"),
+                DiscoveredModel("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet"),
+                DiscoveredModel("deepseek/deepseek-chat", "DeepSeek V3"),
+                DiscoveredModel("deepseek/deepseek-r1", "DeepSeek R1"),
+                DiscoveredModel("google/gemini-2.0-flash-exp:free", "Gemini 2.0 Flash (Free)", isFree = true),
+                DiscoveredModel("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B (Free)", isFree = true),
+                DiscoveredModel("qwen/qwen-2.5-coder-32b-instruct:free", "Qwen 2.5 Coder 32B (Free)", isFree = true),
+            )
+            lowerUrl.contains("openai") -> listOf(
+                DiscoveredModel("gpt-4o", "GPT-4o"),
+                DiscoveredModel("gpt-4o-mini", "GPT-4o Mini"),
+                DiscoveredModel("o3-mini", "o3-mini"),
+                DiscoveredModel("o1", "o1"),
+            )
+            else -> listOf(
+                DiscoveredModel("claude-3-7-sonnet", "Claude 3.7 Sonnet"),
+                DiscoveredModel("claude-3-5-sonnet", "Claude 3.5 Sonnet"),
+                DiscoveredModel("gpt-4o", "GPT-4o"),
+                DiscoveredModel("deepseek-chat", "DeepSeek Chat"),
+            )
+        }
     }
 
     private data class HttpResult(val code: Int, val body: String, val error: String? = null)

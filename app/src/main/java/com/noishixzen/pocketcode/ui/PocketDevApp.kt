@@ -553,11 +553,7 @@ private fun BackgroundTaskSetupScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        BrandMark(compact = true)
-                        Spacer(Modifier.width(9.dp))
-                        Text("Pocket Code", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Pocket Code", fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = onToggleTheme) {
@@ -826,11 +822,7 @@ private fun RuntimeSetupPromptScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        BrandMark(compact = true)
-                        Spacer(Modifier.width(9.dp))
-                        Text("Pocket Code", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Pocket Code", fontWeight = FontWeight.Bold)
                 },
                 navigationIcon = {
                     if (currentStep > 0) {
@@ -1477,11 +1469,7 @@ private fun RuntimeInstallationScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        BrandMark(compact = true)
-                        Spacer(Modifier.width(9.dp))
-                        Text("Set up Pocket Code", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Set up Pocket Code", fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = onToggleTheme) {
@@ -1496,9 +1484,14 @@ private fun RuntimeInstallationScreen(
         },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top,
         ) {
+            Spacer(Modifier.height(4.dp))
             StepDots(0)
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1530,51 +1523,105 @@ private fun RuntimeInstallationScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.height(4.dp))
-            Box(Modifier.fillMaxWidth().height(42.dp), contentAlignment = Alignment.CenterStart) {
-                Text(
-                    state.startupMessage,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = state.startupMessage,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(14.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
             ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Installation progress", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Text("${(state.startupProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false),
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Installation progress",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Estimated ${setupTimeEstimate(state.selectedDevStacks)}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        ) {
+                            Text(
+                                "${(state.startupProgress * 100).toInt()}%",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     LinearProgressIndicator(
                         progress = { state.startupProgress.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        modifier = Modifier.fillMaxWidth().height(8.dp),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                    Spacer(Modifier.height(10.dp))
-                    Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Estimated ${setupTimeEstimate(state.selectedDevStacks)}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.5.sp,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        state.startupBytes?.let { (downloaded, total) ->
+                    state.startupBytes?.let { (downloaded, total) ->
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
                             Text(
-                                "${formatMegabytes(downloaded)} / ${formatMegabytes(total)}",
+                                text = "Downloaded",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.5.sp,
                             )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            ) {
+                                Text(
+                                    text = "${formatMegabytes(downloaded)} / ${formatMegabytes(total)}",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     }
                 }
@@ -1583,7 +1630,7 @@ private fun RuntimeInstallationScreen(
             SetupLogPanel(
                 logs = state.startupLogs.ifEmpty { listOf("$ ${state.startupMessage}") },
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
                 "You can leave Pocket Code in the background and follow setup from the notification.",
                 modifier = Modifier.fillMaxWidth(),
@@ -1592,6 +1639,7 @@ private fun RuntimeInstallationScreen(
                 lineHeight = 16.sp,
                 textAlign = TextAlign.Center,
             )
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
@@ -1624,16 +1672,6 @@ private fun StartupLoadingScreen(
             messageIndex = (messageIndex + 1) % messages.size
         }
     }
-    val logoTransition = rememberInfiniteTransition(label = "startup logo")
-    val logoPulse by logoTransition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_400),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "startup logo pulse",
-    )
 
     Box(
         modifier = Modifier
@@ -1642,14 +1680,19 @@ private fun StartupLoadingScreen(
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            BrandMark(
-                Modifier.graphicsLayer {
-                    scaleX = logoPulse
-                    scaleY = logoPulse
-                    alpha = 0.82f + ((logoPulse - 0.96f) / 0.08f) * 0.18f
-                },
+            CircularProgressIndicator(
+                modifier = Modifier.size(46.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.5.dp,
             )
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Pocket Code",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Spacer(Modifier.height(8.dp))
             AnimatedContent(
                 targetState = messages[messageIndex],
                 label = "startup message",
@@ -4698,7 +4741,7 @@ private fun ChatTab(
                             onValueChange = { prompt = it },
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 4.dp, vertical = 10.dp)
+                                .padding(horizontal = 6.dp, vertical = 10.dp)
                                 .heightIn(min = 20.dp, max = 130.dp),
                             textStyle = TextStyle(
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -4721,50 +4764,36 @@ private fun ChatTab(
                             },
                         )
 
-                        Spacer(Modifier.width(4.dp))
-
-                        if (isRunning) {
+                        IconButton(
+                            onClick = {
+                                if (isRunning) {
+                                    onStop()
+                                } else if (canSend) {
+                                    onSend(prompt)
+                                    prompt = ""
+                                }
+                            },
+                            enabled = isRunning || canSend,
+                            modifier = Modifier.size(40.dp),
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(38.dp)
+                                    .size(34.dp)
                                     .background(
-                                        color = MaterialTheme.colorScheme.error,
+                                        color = if (isRunning) MaterialTheme.colorScheme.error
+                                        else if (canSend) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.surfaceVariant,
                                         shape = CircleShape,
-                                    )
-                                    .clickable(onClick = onStop),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Stop,
-                                    contentDescription = "Stop AI task",
-                                    tint = MaterialTheme.colorScheme.onError,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(
-                                        color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = CircleShape,
-                                    )
-                                    .clickable(
-                                        enabled = canSend,
-                                        onClick = {
-                                            if (canSend) {
-                                                onSend(prompt)
-                                                prompt = ""
-                                            }
-                                        },
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.ArrowUpward,
-                                    contentDescription = "Send",
-                                    tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(19.dp),
+                                    imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.ArrowUpward,
+                                    contentDescription = if (isRunning) "Stop AI task" else "Send",
+                                    tint = if (isRunning) MaterialTheme.colorScheme.onError
+                                    else if (canSend) MaterialTheme.colorScheme.onPrimary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                         }

@@ -4,10 +4,12 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import com.noishixzen.pocketcode.data.AppPreferences
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -165,6 +167,20 @@ class ProjectEditorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val appPrefs = AppPreferences(this)
+            if (appPrefs.smooth120Hz) {
+                runCatching {
+                    val maxMode = display?.supportedModes?.maxByOrNull { it.refreshRate }
+                    if (maxMode != null) {
+                        val lp = window.attributes
+                        lp.preferredDisplayModeId = maxMode.modeId
+                        window.attributes = lp
+                    }
+                }
+            }
+        }
 
         val projectId = intent.getStringExtra(EXTRA_PROJECT_ID) ?: ""
         val projectName = intent.getStringExtra(EXTRA_PROJECT_NAME) ?: "Project"
@@ -914,6 +930,13 @@ private fun CodeEditorCanvas(
     val lines = remember(textFieldValue.text) { textFieldValue.text.lines() }
     val lineCount = lines.size
 
+    val context = LocalContext.current
+    val appPrefs = remember { AppPreferences(context) }
+    val fontSize = appPrefs.editorFontSize.sp
+    val lineHeight = (appPrefs.editorFontSize * 1.55f).sp
+    val showLineNumbers = appPrefs.editorLineNumbers
+    val wordWrap = appPrefs.editorWordWrap
+
     val editorBg = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF0D1017) else Color(0xFFFAFAFA)
     val gutterBg = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF131720) else Color(0xFFF0F2F5)
     val textColor = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFFE2E8F0) else Color(0xFF1E293B)
@@ -926,32 +949,34 @@ private fun CodeEditorCanvas(
             .verticalScroll(vScrollState),
     ) {
         // Line Numbers Gutter
-        Column(
-            modifier = Modifier
-                .width(46.dp)
-                .background(gutterBg)
-                .padding(vertical = 12.dp, horizontal = 4.dp),
-            horizontalAlignment = Alignment.End,
-        ) {
-            for (i in 1..lineCount) {
-                Text(
-                    text = "$i",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.5.sp,
-                    lineHeight = 20.sp,
-                    color = gutterTextColor,
-                    maxLines = 1,
-                )
+        if (showLineNumbers) {
+            Column(
+                modifier = Modifier
+                    .width(46.dp)
+                    .background(gutterBg)
+                    .padding(vertical = 12.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                for (i in 1..lineCount) {
+                    Text(
+                        text = "$i",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = (appPrefs.editorFontSize - 0.5f).sp,
+                        lineHeight = lineHeight,
+                        color = gutterTextColor,
+                        maxLines = 1,
+                    )
+                }
             }
-        }
 
-        Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(6.dp))
+        }
 
         // Editor input
         Box(
             modifier = Modifier
                 .weight(1f)
-                .horizontalScroll(hScrollState)
+                .then(if (wordWrap) Modifier else Modifier.horizontalScroll(hScrollState))
                 .padding(vertical = 12.dp, horizontal = 6.dp),
         ) {
             BasicTextField(
@@ -959,8 +984,8 @@ private fun CodeEditorCanvas(
                 onValueChange = onValueChange,
                 textStyle = TextStyle(
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    lineHeight = 20.sp,
+                    fontSize = fontSize,
+                    lineHeight = lineHeight,
                     color = textColor,
                 ),
                 cursorBrush = SolidColor(PocketOrange),
@@ -981,8 +1006,11 @@ private fun CodeKeyboardAccessoryBar(
     onSave: () -> Unit,
     onRun: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val appPrefs = remember { AppPreferences(context) }
+    val tabSpaces = " ".repeat(appPrefs.editorTabSize.coerceIn(2, 4))
     val symbols = listOf(
-        "Tab" to "  ",
+        "Tab" to tabSpaces,
         "{" to "{",
         "}" to "}",
         "(" to "(",

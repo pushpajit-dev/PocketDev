@@ -69,6 +69,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -98,6 +100,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.noishixzen.pocketcode.BuildConfig
 import com.noishixzen.pocketcode.data.ApiKeyInfo
+import com.noishixzen.pocketcode.data.AppPreferences
 import com.noishixzen.pocketcode.model.AgentKind
 import com.noishixzen.pocketcode.model.DEEPSEEK_HARNESS_PROVIDERS
 import com.noishixzen.pocketcode.model.DSH_PROTOCOL_PROVIDERS
@@ -113,7 +116,7 @@ import com.noishixzen.pocketcode.ui.theme.AppThemeMode
 import com.noishixzen.pocketcode.ui.theme.PocketOrange
 import kotlinx.coroutines.launch
 
-private enum class SettingsSection { APPEARANCE, TOOLS, RUNTIME, UPDATE_CHANNEL }
+private enum class SettingsSection { APPEARANCE, TWEAKS, TOOLS, RUNTIME, UPDATE_CHANNEL }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -230,6 +233,226 @@ fun SettingsScreen(
                         ModernThemeChoice("Dark", Icons.Default.DarkMode, state.themeMode == AppThemeMode.DARK, { onSetThemeMode(AppThemeMode.DARK) }, Modifier.weight(1f))
                         ModernThemeChoice("Light", Icons.Default.LightMode, state.themeMode == AppThemeMode.LIGHT, { onSetThemeMode(AppThemeMode.LIGHT) }, Modifier.weight(1f))
                         ModernThemeChoice("System", Icons.Default.PhoneAndroid, state.themeMode == AppThemeMode.SYSTEM, { onSetThemeMode(AppThemeMode.SYSTEM) }, Modifier.weight(1f))
+                    }
+                }
+            }
+
+            item {
+                val appPrefs = remember { AppPreferences(context) }
+                var smooth120Hz by remember { mutableStateOf(appPrefs.smooth120Hz) }
+                var hapticFeedback by remember { mutableStateOf(appPrefs.hapticFeedback) }
+                var amoledBlack by remember { mutableStateOf(appPrefs.amoledBlack) }
+                var editorFontSize by remember { mutableStateOf(appPrefs.editorFontSize) }
+                var editorLineNumbers by remember { mutableStateOf(appPrefs.editorLineNumbers) }
+                var editorWordWrap by remember { mutableStateOf(appPrefs.editorWordWrap) }
+                var editorTabSize by remember { mutableStateOf(appPrefs.editorTabSize) }
+                var maxOutputTokens by remember { mutableStateOf(appPrefs.maxOutputTokens) }
+                var autoRetryRateLimits by remember { mutableStateOf(appPrefs.autoRetryRateLimits) }
+                var cacheClearedMessage by remember { mutableStateOf<String?>(null) }
+
+                SettingsAccordion(
+                    title = "Tweaks & Optimization",
+                    subtitle = "120Hz display, code editor, AI tokens & quotas",
+                    icon = Icons.Default.Memory,
+                    expanded = expanded == SettingsSection.TWEAKS,
+                    onClick = { toggle(SettingsSection.TWEAKS) },
+                ) {
+                    Text(
+                        "Performance & Display",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    TweakSwitchRow(
+                        title = "High refresh rate (120Hz)",
+                        subtitle = "Enable ultra-smooth animations and 90/120Hz rendering",
+                        checked = smooth120Hz,
+                        onCheckedChange = {
+                            smooth120Hz = it
+                            appPrefs.smooth120Hz = it
+                        },
+                    )
+                    TweakSwitchRow(
+                        title = "Haptic feedback",
+                        subtitle = "Vibrate on button clicks, send, and key actions",
+                        checked = hapticFeedback,
+                        onCheckedChange = {
+                            hapticFeedback = it
+                            appPrefs.hapticFeedback = it
+                        },
+                    )
+                    TweakSwitchRow(
+                        title = "AMOLED true black",
+                        subtitle = "Use pure #000000 background for OLED battery saving",
+                        checked = amoledBlack,
+                        onCheckedChange = {
+                            amoledBlack = it
+                            appPrefs.amoledBlack = it
+                        },
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text(
+                        "Code Editor",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Font size", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Editor text size in sp", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(12, 13, 14, 16).forEach { size ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (editorFontSize == size) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        editorFontSize = size
+                                        appPrefs.editorFontSize = size
+                                    },
+                                ) {
+                                    Text(
+                                        "${size}sp",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (editorFontSize == size) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    TweakSwitchRow(
+                        title = "Show line numbers",
+                        subtitle = "Display gutter with line numbering in editor",
+                        checked = editorLineNumbers,
+                        onCheckedChange = {
+                            editorLineNumbers = it
+                            appPrefs.editorLineNumbers = it
+                        },
+                    )
+
+                    TweakSwitchRow(
+                        title = "Word wrap",
+                        subtitle = "Wrap long lines without horizontal scrollbar",
+                        checked = editorWordWrap,
+                        onCheckedChange = {
+                            editorWordWrap = it
+                            appPrefs.editorWordWrap = it
+                        },
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Tab width", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Indentation spacing", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(2 to "2 spaces", 4 to "4 spaces").forEach { (spaces, label) ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (editorTabSize == spaces) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        editorTabSize = spaces
+                                        appPrefs.editorTabSize = spaces
+                                    },
+                                ) {
+                                    Text(
+                                        label,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (editorTabSize == spaces) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text(
+                        "AI & Quotas",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Max output tokens", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Limit token generation per prompt", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(2048, 4096, 8192).forEach { tokens ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (maxOutputTokens == tokens) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        maxOutputTokens = tokens
+                                        appPrefs.maxOutputTokens = tokens
+                                    },
+                                ) {
+                                    Text(
+                                        "${tokens / 1024}k",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (maxOutputTokens == tokens) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    TweakSwitchRow(
+                        title = "Auto-retry on rate limit (429)",
+                        subtitle = "Automatically retry with backoff when API quota is constrained",
+                        checked = autoRetryRateLimits,
+                        onCheckedChange = {
+                            autoRetryRateLimits = it
+                            appPrefs.autoRetryRateLimits = it
+                        },
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text(
+                        "Maintenance & Cache",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            val cacheDir = context.cacheDir
+                            val filesCleared = runCatching {
+                                cacheDir.deleteRecursively()
+                                cacheDir.mkdirs()
+                                true
+                            }.getOrDefault(false)
+                            cacheClearedMessage = if (filesCleared) "Cache successfully cleared" else "Cleared"
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, null, Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(cacheClearedMessage ?: "Clear temporary download cache")
                     }
                 }
             }
@@ -1008,5 +1231,35 @@ private fun DebugUpdateChannelSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun TweakSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(subtitle, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+            ),
+        )
     }
 }

@@ -14,11 +14,15 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
 
-// Material Orange Gradient Palette
-val PocketOrange = Color(0xFFFF6D00)
-val PocketOrangeDeep = Color(0xFFFF5722)
-val PocketOrangeAmber = Color(0xFFFF9100)
-val PocketOrangeLight = Color(0xFFFFAB40)
+// Modern Peach / Beige to Vivid Orange Gamut Palette
+val PocketPeach = Color(0xFFF7A56C)        // Peach / Baich
+val PocketPeachWarm = Color(0xFFFFB37C)    // Warm peach glow
+val PocketBeige = Color(0xFFE89858)        // Logo natural beige
+val PocketOrange = Color(0xFFFF6F00)       // Vivid modern gamut orange
+val PocketOrangeVibrant = Color(0xFFFF7A18)// High-gamut radiant orange
+val PocketOrangeDeep = Color(0xFFF4511E)   // Warm sunset vermilion
+val PocketOrangeAmber = Color(0xFFFFA000)  // Golden amber
+val PocketOrangeLight = Color(0xFFFFCC80)  // Soft peach/cream
 val PocketBlue = Color(0xFF8EA8FF)
 val PocketGreen = Color(0xFF69D69E)
 
@@ -27,23 +31,26 @@ val PocketSurfaceDark = Color(0xFF13171F)
 val PocketSurfaceVariantDark = Color(0xFF1B202A)
 val PocketOutlineDark = Color(0xFF2A313E)
 
-val PocketBackgroundLight = Color(0xFFF9FAFB)
+val PocketBackgroundLight = Color(0xFFFDFBF9)
 val PocketSurfaceLight = Color(0xFFFFFFFF)
-val PocketSurfaceVariantLight = Color(0xFFF2F4F7)
-val PocketOutlineLight = Color(0xFFD0D5DD)
+val PocketSurfaceVariantLight = Color(0xFFF7F3EE)
+val PocketOutlineLight = Color(0xFFE5DDD5)
 
-// Gradients
+// Gradients (Peach/Beige to Radiant Orange)
 val OrangeGradient = Brush.horizontalGradient(
-    colors = listOf(PocketOrangeDeep, PocketOrangeAmber)
+    colors = listOf(PocketPeach, PocketOrangeVibrant, PocketOrangeDeep)
 )
 val OrangeGradientVertical = Brush.verticalGradient(
-    colors = listOf(PocketOrangeDeep, PocketOrangeAmber)
+    colors = listOf(PocketPeach, PocketOrangeVibrant, PocketOrangeDeep)
+)
+val PeachOrangeGradient = Brush.horizontalGradient(
+    colors = listOf(PocketPeachWarm, PocketOrangeVibrant)
 )
 val OrangeSubtleGradientDark = Brush.linearGradient(
-    colors = listOf(Color(0xFF22140A), Color(0xFF13171F))
+    colors = listOf(Color(0xFF23150B), Color(0xFF13171F))
 )
 val OrangeSubtleGradientLight = Brush.linearGradient(
-    colors = listOf(Color(0xFFFFF4ED), Color(0xFFFFFFFF))
+    colors = listOf(Color(0xFFFFF6EE), Color(0xFFFFFFFF))
 )
 
 // Font Family - Helvetica
@@ -71,12 +78,12 @@ fun helveticaTypography(): Typography {
 }
 
 private val DarkColors = darkColorScheme(
-    primary = PocketOrangeAmber,
+    primary = PocketOrangeVibrant,
     onPrimary = Color(0xFF1C0A00),
-    primaryContainer = Color(0xFF451900),
-    onPrimaryContainer = Color(0xFFFFDBC8),
-    secondary = PocketOrangeDeep,
-    onSecondary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF4A1E00),
+    onPrimaryContainer = PocketPeachWarm,
+    secondary = PocketPeach,
+    onSecondary = Color(0xFF200C00),
     secondaryContainer = Color(0xFF4E1602),
     onSecondaryContainer = Color(0xFFFFDBD0),
     tertiary = PocketGreen,
@@ -94,7 +101,7 @@ private val DarkColors = darkColorScheme(
 private val LightColors = lightColorScheme(
     primary = Color(0xFFE65100),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFE0B2),
+    primaryContainer = Color(0xFFFFE8D6),
     onPrimaryContainer = Color(0xFF3E1200),
     secondary = Color(0xFFF4511E),
     onSecondary = Color(0xFFFFFFFF),

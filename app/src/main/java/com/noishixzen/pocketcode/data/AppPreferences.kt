@@ -62,6 +62,10 @@ class AppPreferences(private val context: Context) {
         get() = preferences.getString("github_login", "") ?: ""
         set(value) { preferences.edit().putString("github_login", value).apply() }
 
+    var netlifyToken: String
+        get() = preferences.getString("netlify_token", "") ?: ""
+        set(value) { preferences.edit().putString("netlify_token", value).apply() }
+
     fun saveAgentConversation(agent: AgentKind, projectId: String, chatId: String, conversationId: String?) {
         val key = agentConversationKey(agent, projectId, chatId)
         preferences.edit().apply {

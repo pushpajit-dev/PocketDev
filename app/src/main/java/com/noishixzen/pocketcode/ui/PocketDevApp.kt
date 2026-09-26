@@ -15,6 +15,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
+import com.noishixzen.pocketcode.network.NetlifyClient
+import com.noishixzen.pocketcode.network.NetlifySite
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -4033,8 +4038,7 @@ enum class PreviewMode(val label: String) {
 }
 
 enum class DeployPlatform(val label: String, val badgeColor: Color, val domainSuffix: String) {
-    NETLIFY("Netlify", Color(0xFF00C7B7), "netlify.app"),
-    VERCEL("Vercel", Color(0xFFE2E8F0), "vercel.app")
+    NETLIFY("Netlify", Color(0xFF00C7B7), "netlify.app")
 }
 
 data class FrameworkInfo(val name: String, val buildCommand: String, val outputDir: String)
@@ -4182,20 +4186,6 @@ private fun ProjectCard(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(Modifier.width(8.dp))
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = PocketGreen.copy(alpha = 0.15f),
-                        ) {
-                            Text(
-                                text = "Ready",
-                                color = PocketGreen,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                            )
-                        }
                         Spacer(Modifier.width(8.dp))
                     }
                     Text(
@@ -5149,10 +5139,6 @@ private fun FilesTab(
                             Text("Build", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PocketOrange)
                         }
                     }
-                    Spacer(Modifier.width(4.dp))
-                    IconButton(onClick = onOpenEditor) {
-                        Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange)
-                    }
                     if (copiedFile != null && project != null) {
                         IconButton(
                             onClick = {
@@ -5280,21 +5266,23 @@ private fun FilesTab(
                         expanded = activeMenuPath == entry.path,
                         onDismissRequest = { activeMenuPath = null },
                     ) {
-                        if (fileObj != null && (isZipFile || !entry.isDirectory)) {
+                        if (fileObj != null) {
                             DropdownMenuItem(
-                                text = { Text("Upload to Netlify") },
+                                text = { Text(if (entry.isDirectory) "Deploy folder to Netlify" else "Upload to Netlify") },
                                 leadingIcon = { Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF00C7B7)) },
                                 onClick = {
                                     activeMenuPath = null
-                                    onUploadToPlatform(fileObj, DeployPlatform.NETLIFY)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Upload to Vercel") },
-                                leadingIcon = { Icon(Icons.Default.CloudUpload, null, tint = MaterialTheme.colorScheme.primary) },
-                                onClick = {
-                                    activeMenuPath = null
-                                    onUploadToPlatform(fileObj, DeployPlatform.VERCEL)
+                                    if (entry.isDirectory) {
+                                        coroutineScope.launch {
+                                            val destZip = File(fileObj.parentFile ?: fileObj, "${fileObj.name}-build.zip")
+                                            withContext(Dispatchers.IO) {
+                                                packageDeploymentZip(fileObj, destZip)
+                                            }
+                                            onUploadToPlatform(destZip, DeployPlatform.NETLIFY)
+                                        }
+                                    } else {
+                                        onUploadToPlatform(fileObj, DeployPlatform.NETLIFY)
+                                    }
                                 },
                             )
                             HorizontalDivider()
@@ -6287,18 +6275,44 @@ private fun PreviewTab(
         }
     }
 
-    // Public Deploy State
-    var selectedPlatform by rememberSaveable { mutableStateOf(initialPlatform) }
-    LaunchedEffect(initialPlatform) {
-        selectedPlatform = initialPlatform
+    // Public Deploy State (Exclusively Netlify)
+    val appPrefs = remember { AppPreferences.get(context) }
+    var netlifyTokenInput by rememberSaveable { mutableStateOf(appPrefs.netlifyToken) }
+
+    fun checkNetlifyCookies(): Boolean {
+        val cookies = CookieManager.getInstance().getCookie("https://app.netlify.com")
+        return !cookies.isNullOrBlank() && (
+            "nf_" in cookies || "jwt" in cookies || "session" in cookies || cookies.length > 10
+        )
     }
 
-    var authCookieStatus by rememberSaveable { mutableStateOf(false) }
-    var isDeploying by rememberSaveable { mutableStateOf(false) }
-    var deployStepText by rememberSaveable { mutableStateOf("") }
-    var deployProgress by rememberSaveable { mutableFloatStateOf(0f) }
+    var hasNetlifySession by rememberSaveable { mutableStateOf(checkNetlifyCookies()) }
+    var publicNavUrl by rememberSaveable { mutableStateOf("https://app.netlify.com/drop") }
     var deployedPublicUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var adminUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var showProjectDetails by rememberSaveable { mutableStateOf(true) }
+    var showLoginDialog by rememberSaveable { mutableStateOf(false) }
+    var isDeploying by rememberSaveable { mutableStateOf(false) }
+    var deployStatusText by rememberSaveable { mutableStateOf("") }
+    var deployError by rememberSaveable { mutableStateOf<String?>(null) }
     var publicWebView by remember { mutableStateOf<WebView?>(null) }
+    var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val intent = result.data
+        val uris = when {
+            intent?.clipData != null -> {
+                val clip = intent.clipData!!
+                Array(clip.itemCount) { clip.getItemAt(it).uri }
+            }
+            intent?.data != null -> arrayOf(intent.data!!)
+            else -> null
+        }
+        fileChooserCallback?.onReceiveValue(uris)
+        fileChooserCallback = null
+    }
 
     val projectRootFile = remember(project?.rootPath) {
         project?.rootPath?.let { File(it) }
@@ -6308,27 +6322,49 @@ private fun PreviewTab(
     }
 
     val domainSlug = project?.slug ?: "pocketdev"
-    val defaultPublicDomain = "https://$domainSlug.${selectedPlatform.domainSuffix}"
+    val defaultPublicDomain = "https://$domainSlug.netlify.app"
 
-    fun startDeploy(bundleZip: File? = null) {
+    fun deployViaApi(targetZip: File? = null) {
+        val token = appPrefs.netlifyToken.ifBlank { netlifyTokenInput }.trim()
+        if (token.isBlank()) {
+            Toast.makeText(context, "Please enter your Netlify API token or use Netlify Drop below", Toast.LENGTH_LONG).show()
+            showProjectDetails = true
+            return
+        }
         if (isDeploying) return
         isDeploying = true
+        deployError = null
+        deployStatusText = "Preparing project files..."
         coroutineScope.launch {
-            deployStepText = "Loading project bundle into ${selectedPlatform.label}..."
-            deployProgress = 0.2f
-            delay(500)
-            deployStepText = "Verifying framework manifests (${frameworkInfo.name})..."
-            deployProgress = 0.45f
-            delay(600)
-            deployStepText = "Uploading bundle to ${selectedPlatform.label} Edge Network..."
-            deployProgress = 0.75f
-            delay(700)
-            deployStepText = "Generating edge routes & provisioning SSL certificate..."
-            deployProgress = 1.0f
-            delay(500)
-            deployedPublicUrl = defaultPublicDomain
+            val root = projectRootFile
+            val zipFile = targetZip ?: if (root != null) {
+                File(root, "${domainSlug}-build.zip").also { dest ->
+                    withContext(Dispatchers.IO) { packageDeploymentZip(root, dest) }
+                }
+            } else null
+
+            if (zipFile == null || !zipFile.exists() || zipFile.length() == 0L) {
+                isDeploying = false
+                deployError = "Deployment bundle not found. Please click Build in Files tab first."
+                Toast.makeText(context, deployError, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+
+            deployStatusText = "Uploading ${zipFile.name} (${formatFileSize(zipFile.length())}) to Netlify API..."
+            val result = withContext(Dispatchers.IO) {
+                NetlifyClient().deployZip(token, zipFile, domainSlug)
+            }
             isDeploying = false
-            Toast.makeText(context, "${selectedPlatform.label} edge deployment live!", Toast.LENGTH_LONG).show()
+            result.onSuccess { site ->
+                deployedPublicUrl = site.sslUrl
+                adminUrl = site.adminUrl
+                publicNavUrl = site.sslUrl
+                showProjectDetails = false
+                Toast.makeText(context, "Netlify deploy active: ${site.sslUrl}", Toast.LENGTH_LONG).show()
+            }.onFailure { err ->
+                deployError = err.message ?: "Deployment failed"
+                Toast.makeText(context, "Deploy error: $deployError", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -6337,7 +6373,14 @@ private fun PreviewTab(
             selectedMode = PreviewMode.PUBLIC
             onModeChanged(PreviewMode.PUBLIC)
             onDeployStarted()
-            startDeploy(uploadedFile)
+            val token = appPrefs.netlifyToken.ifBlank { netlifyTokenInput }.trim()
+            if (token.isNotBlank()) {
+                deployViaApi(uploadedFile)
+            } else {
+                publicNavUrl = "https://app.netlify.com/drop"
+                showProjectDetails = false
+                Toast.makeText(context, "Opening Netlify Drop...", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -6373,14 +6416,14 @@ private fun PreviewTab(
                             horizontalArrangement = Arrangement.Center,
                         ) {
                             Icon(
-                                imageVector = if (mode == PreviewMode.LOCAL) Icons.Default.Terminal else Icons.Default.Language,
+                                imageVector = if (mode == PreviewMode.LOCAL) Icons.Default.Terminal else Icons.Default.CloudUpload,
                                 contentDescription = null,
                                 modifier = Modifier.size(15.dp),
                                 tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = mode.label,
+                                text = if (mode == PreviewMode.LOCAL) "Local Preview" else "Netlify Deploy",
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -6562,7 +6605,7 @@ private fun PreviewTab(
                 )
             }
         } else {
-            // Public Tab Content (Browser-Based Design with No Extra Drop UI)
+            // Public Tab Content (Exclusively Netlify Browser-Based Workflow)
             Column(Modifier.fillMaxSize()) {
                 // Top Browser Bar
                 Surface(
@@ -6570,51 +6613,123 @@ private fun PreviewTab(
                     tonalElevation = 1.dp,
                 ) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                        // Platform Selector row
+                        // Quick Action Navigation Chips
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            DeployPlatform.entries.forEach { platform ->
-                                val isSelected = selectedPlatform == platform
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            selectedPlatform = platform
-                                            onPlatformChanged(platform)
-                                            if (deployedPublicUrl != null) {
-                                                deployedPublicUrl = "https://$domainSlug.${platform.domainSuffix}"
-                                            }
-                                        },
-                                    color = if (isSelected) platform.badgeColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
-                                    border = BorderStroke(
-                                        width = if (isSelected) 1.5.dp else 1.dp,
-                                        color = if (isSelected) platform.badgeColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
+                            // Project Details Chip
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showProjectDetails = true },
+                                color = if (showProjectDetails) PocketOrange.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (showProjectDetails) 1.5.dp else 1.dp,
+                                    color = if (showProjectDetails) PocketOrange else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                    ) {
-                                        if (platform == DeployPlatform.NETLIFY) {
-                                            Icon(Icons.Default.CloudUpload, null, tint = platform.badgeColor, modifier = Modifier.size(14.dp))
-                                        } else {
-                                            Text("▲", color = platform.badgeColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                        }
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            platform.label,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 12.sp,
-                                            color = if (isSelected) platform.badgeColor else MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
+                                    Icon(Icons.Default.Info, null, tint = if (showProjectDetails) PocketOrange else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Details", fontSize = 11.sp, fontWeight = if (showProjectDetails) FontWeight.Bold else FontWeight.Medium)
+                                }
+                            }
+
+                            // Netlify Drop Chip
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        showProjectDetails = false
+                                        publicNavUrl = "https://app.netlify.com/drop"
+                                        publicWebView?.loadUrl("https://app.netlify.com/drop")
+                                    },
+                                color = if (!showProjectDetails && publicNavUrl.contains("drop")) Color(0xFF00C7B7).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (!showProjectDetails && publicNavUrl.contains("drop")) 1.5.dp else 1.dp,
+                                    color = if (!showProjectDetails && publicNavUrl.contains("drop")) Color(0xFF00C7B7) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF00C7B7), modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Drop", fontSize = 11.sp, fontWeight = if (!showProjectDetails && publicNavUrl.contains("drop")) FontWeight.Bold else FontWeight.Medium)
+                                }
+                            }
+
+                            // Live Preview Chip
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        showProjectDetails = false
+                                        val target = deployedPublicUrl ?: defaultPublicDomain
+                                        publicNavUrl = target
+                                        publicWebView?.loadUrl(target)
+                                    },
+                                color = if (!showProjectDetails && !publicNavUrl.contains("netlify.com/")) PocketGreen.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (!showProjectDetails && !publicNavUrl.contains("netlify.com/")) 1.5.dp else 1.dp,
+                                    color = if (!showProjectDetails && !publicNavUrl.contains("netlify.com/")) PocketGreen else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Default.Language, null, tint = PocketGreen, modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Preview", fontSize = 11.sp, fontWeight = if (!showProjectDetails && !publicNavUrl.contains("netlify.com/")) FontWeight.Bold else FontWeight.Medium)
+                                }
+                            }
+
+                            // Site Console Chip
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .height(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        showProjectDetails = false
+                                        val target = adminUrl ?: "https://app.netlify.com/sites"
+                                        publicNavUrl = target
+                                        publicWebView?.loadUrl(target)
+                                    },
+                                color = if (!showProjectDetails && (publicNavUrl.contains("sites") || publicNavUrl.contains("teams"))) Color(0xFF00C7B7).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (!showProjectDetails && (publicNavUrl.contains("sites") || publicNavUrl.contains("teams"))) 1.5.dp else 1.dp,
+                                    color = if (!showProjectDetails && (publicNavUrl.contains("sites") || publicNavUrl.contains("teams"))) Color(0xFF00C7B7) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Default.Dns, null, tint = Color(0xFF00C7B7), modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Console", fontSize = 11.sp, fontWeight = if (!showProjectDetails && publicNavUrl.contains("sites")) FontWeight.Bold else FontWeight.Medium)
                                 }
                             }
                         }
@@ -6642,8 +6757,8 @@ private fun PreviewTab(
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
-                                        text = deployedPublicUrl ?: defaultPublicDomain,
-                                        fontSize = 12.5.sp,
+                                        text = if (showProjectDetails) defaultPublicDomain else publicNavUrl,
+                                        fontSize = 12.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
@@ -6655,7 +6770,7 @@ private fun PreviewTab(
                             Spacer(Modifier.width(6.dp))
                             IconButton(
                                 onClick = {
-                                    val currentLink = deployedPublicUrl ?: defaultPublicDomain
+                                    val currentLink = if (showProjectDetails) defaultPublicDomain else publicNavUrl
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                     clipboard?.setPrimaryClip(ClipData.newPlainText("Public URL", currentLink))
                                     Toast.makeText(context, "Copied: $currentLink", Toast.LENGTH_SHORT).show()
@@ -6666,10 +6781,11 @@ private fun PreviewTab(
                             }
                             IconButton(
                                 onClick = {
-                                    if (deployedPublicUrl != null) {
-                                        publicWebView?.reload()
+                                    if (showProjectDetails) {
+                                        showProjectDetails = false
+                                        publicWebView?.loadUrl(publicNavUrl)
                                     } else {
-                                        startDeploy(uploadedFile)
+                                        publicWebView?.reload()
                                     }
                                 },
                                 modifier = Modifier.size(36.dp),
@@ -6678,26 +6794,17 @@ private fun PreviewTab(
                             }
                             IconButton(
                                 onClick = {
-                                    val currentLink = deployedPublicUrl ?: defaultPublicDomain
+                                    val currentLink = if (showProjectDetails) defaultPublicDomain else publicNavUrl
                                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentLink)))
                                 },
                                 modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(Icons.Default.OpenInBrowser, "Open in browser", modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                             }
-                            if (deployedPublicUrl != null) {
-                                IconButton(
-                                    onClick = { deployedPublicUrl = null },
-                                    modifier = Modifier.size(36.dp),
-                                ) {
-                                    Icon(Icons.Default.Close, "Back to project view", modifier = Modifier.size(17.dp))
-                                }
-                            }
                         }
                     }
                 }
 
-                // Browser Viewport
                 if (isDeploying) {
                     Box(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -6716,51 +6823,101 @@ private fun PreviewTab(
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(40.dp),
                                     strokeWidth = 3.dp,
-                                    color = selectedPlatform.badgeColor,
+                                    color = Color(0xFF00C7B7),
                                 )
                                 Spacer(Modifier.height(16.dp))
                                 Text(
-                                    text = "${selectedPlatform.label} Edge Deployment",
+                                    text = "Deploying to Netlify",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
                                 )
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    text = deployStepText,
+                                    text = deployStatusText,
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center,
                                 )
-                                Spacer(Modifier.height(14.dp))
-                                LinearProgressIndicator(
-                                    progress = { deployProgress },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                    color = selectedPlatform.badgeColor,
-                                )
                             }
                         }
                     }
-                } else if (deployedPublicUrl != null) {
+                } else if (!showProjectDetails) {
+                    // Browser Viewport for Netlify Drop, Live Preview, and Netlify Console
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
                                 publicWebView = this
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
+                                settings.databaseEnabled = true
                                 settings.setSupportZoom(true)
-                                webChromeClient = WebChromeClient()
-                                webViewClient = WebViewClient()
-                                loadUrl(deployedPublicUrl.orEmpty())
+                                CookieManager.getInstance().setAcceptCookie(true)
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webChromeClient = object : WebChromeClient() {
+                                    override fun onShowFileChooser(
+                                        webView: WebView?,
+                                        filePathCallback: ValueCallback<Array<Uri>>?,
+                                        fileChooserParams: FileChooserParams?
+                                    ): Boolean {
+                                        fileChooserCallback?.onReceiveValue(null)
+                                        fileChooserCallback = filePathCallback
+                                        val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                            type = "*/*"
+                                            addCategory(Intent.CATEGORY_OPENABLE)
+                                        }
+                                        return try {
+                                            filePickerLauncher.launch(intent)
+                                            true
+                                        } catch (_: Exception) {
+                                            fileChooserCallback?.onReceiveValue(null)
+                                            fileChooserCallback = null
+                                            false
+                                        }
+                                    }
+                                }
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        url?.let {
+                                            publicNavUrl = it
+                                            if (it.contains("sites/")) {
+                                                val siteName = it.substringAfter("sites/").substringBefore("/").substringBefore("?").substringBefore("#")
+                                                if (siteName.isNotBlank()) {
+                                                    deployedPublicUrl = "https://$siteName.netlify.app"
+                                                    adminUrl = "https://app.netlify.com/sites/$siteName"
+                                                }
+                                            }
+                                        }
+                                        CookieManager.getInstance().flush()
+                                        hasNetlifySession = checkNetlifyCookies()
+                                    }
+
+                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        val target = request?.url?.toString() ?: return false
+                                        publicNavUrl = target
+                                        if (target.contains("sites/")) {
+                                            val siteName = target.substringAfter("sites/").substringBefore("/").substringBefore("?").substringBefore("#")
+                                            if (siteName.isNotBlank()) {
+                                                deployedPublicUrl = "https://$siteName.netlify.app"
+                                                adminUrl = "https://app.netlify.com/sites/$siteName"
+                                            }
+                                        }
+                                        return false
+                                    }
+                                }
+                                loadUrl(publicNavUrl)
                             }
                         },
                         update = { current ->
                             publicWebView = current
-                            if (current.url != deployedPublicUrl) current.loadUrl(deployedPublicUrl.orEmpty())
+                            if (current.url != publicNavUrl && publicNavUrl.isNotBlank()) {
+                                current.loadUrl(publicNavUrl)
+                            }
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
-                    // Browser Design Displaying Project Details
+                    // Project Details View with Separate Columns for Zip Name & Directory
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -6783,21 +6940,17 @@ private fun PreviewTab(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Surface(
                                             shape = CircleShape,
-                                            color = selectedPlatform.badgeColor.copy(alpha = 0.2f),
-                                            modifier = Modifier.size(32.dp),
+                                            color = Color(0xFF00C7B7).copy(alpha = 0.2f),
+                                            modifier = Modifier.size(34.dp),
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
-                                                if (selectedPlatform == DeployPlatform.NETLIFY) {
-                                                    Icon(Icons.Default.CloudUpload, null, tint = selectedPlatform.badgeColor, modifier = Modifier.size(18.dp))
-                                                } else {
-                                                    Text("▲", color = selectedPlatform.badgeColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                }
+                                                Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF00C7B7), modifier = Modifier.size(19.dp))
                                             }
                                         }
                                         Spacer(Modifier.width(10.dp))
                                         Column {
                                             Text(
-                                                "${selectedPlatform.label} Project Details",
+                                                "Netlify Project Deployment",
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 15.sp,
                                             )
@@ -6808,23 +6961,81 @@ private fun PreviewTab(
                                             )
                                         }
                                     }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = PocketGreen.copy(alpha = 0.15f),
-                                    ) {
-                                        Text(
-                                            "READY",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = PocketGreen,
-                                        )
-                                    }
                                 }
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                                // Details Table
+                                // Separate Column for Zip Name & Directory
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    // Column 1: Deployment Bundle (.zip)
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = BorderStroke(1.dp, PocketGreen.copy(alpha = 0.4f)),
+                                    ) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Archive, null, modifier = Modifier.size(14.dp), tint = PocketGreen)
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("DEPLOYMENT ZIP", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = PocketGreen)
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                uploadedFile?.name ?: "${domainSlug}-build.zip",
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = PocketGreen,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            val zipFile = uploadedFile ?: projectRootFile?.let { File(it, "${domainSlug}-build.zip") }
+                                            val sizeText = if (zipFile != null && zipFile.exists()) formatFileSize(zipFile.length()) else "Not built yet"
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(sizeText, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+
+                                    // Column 2: Build Directory
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = BorderStroke(1.dp, PocketOrange.copy(alpha = 0.4f)),
+                                    ) {
+                                        Column(Modifier.padding(12.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Folder, null, modifier = Modifier.size(14.dp), tint = PocketOrange)
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("BUILD DIRECTORY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = PocketOrange)
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(
+                                                frameworkInfo.outputDir,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = PocketOrange,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                frameworkInfo.name,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Project Framework & Build Info
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Project Name", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -6835,89 +7046,190 @@ private fun PreviewTab(
                                         Text(domainSlug, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
                                     }
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Detected Framework", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(frameworkInfo.name, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = PocketOrange)
-                                    }
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Build Command", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Text(frameworkInfo.buildCommand, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                                     }
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Publish Directory", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(frameworkInfo.outputDir, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                    }
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Deployment Bundle", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(
-                                            uploadedFile?.name ?: "${domainSlug}-build.zip",
-                                            fontSize = 12.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = PocketGreen,
-                                        )
+                                        Text("Netlify Domain", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(deployedPublicUrl ?: defaultPublicDomain, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                                // Browser Session Bar
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("External Browser Session", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
-                                        Text(
-                                            if (authCookieStatus) "Cookies Synced · Ready" else "Sync cookies or login externally via browser",
-                                            fontSize = 11.sp,
-                                            color = if (authCookieStatus) PocketGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                val loginUrl = if (selectedPlatform == DeployPlatform.NETLIFY) "https://app.netlify.com/login" else "https://vercel.com/login"
-                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(loginUrl)))
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp),
-                                        ) {
-                                            Text("Login", fontSize = 11.sp)
+                                // In-App Netlify Session & Cookie Manager
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Netlify Authentication", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                                            Text(
+                                                if (hasNetlifySession) "Session Active · Cookies Synchronized" else "No active session · Login inside app",
+                                                fontSize = 11.sp,
+                                                color = if (hasNetlifySession) PocketGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
                                         }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedButton(
+                                                onClick = { showLoginDialog = true },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(32.dp),
+                                            ) {
+                                                Icon(Icons.Default.Key, null, modifier = Modifier.size(13.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Login", fontSize = 11.sp)
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    CookieManager.getInstance().flush()
+                                                    hasNetlifySession = checkNetlifyCookies()
+                                                    Toast.makeText(context, if (hasNetlifySession) "Netlify session synced!" else "Cookies refreshed", Toast.LENGTH_SHORT).show()
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(32.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            ) {
+                                                Text("Sync", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+
+                                    // Netlify Personal Access Token (PAT)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        OutlinedTextField(
+                                            value = netlifyTokenInput,
+                                            onValueChange = { netlifyTokenInput = it },
+                                            modifier = Modifier.weight(1f),
+                                            placeholder = { Text("Netlify Personal Access Token (nfp_...)", fontSize = 11.sp) },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                                            shape = RoundedCornerShape(8.dp),
+                                        )
                                         Button(
                                             onClick = {
-                                                val domain = if (selectedPlatform == DeployPlatform.NETLIFY) "netlify.com" else "vercel.com"
-                                                CookieManager.getInstance().setAcceptCookie(true)
-                                                CookieManager.getInstance().flush()
-                                                authCookieStatus = true
-                                                Toast.makeText(context, "Cookies applied & synced for ${selectedPlatform.label}!", Toast.LENGTH_SHORT).show()
+                                                appPrefs.netlifyToken = netlifyTokenInput.trim()
+                                                Toast.makeText(context, "Netlify token saved!", Toast.LENGTH_SHORT).show()
                                             },
                                             shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            modifier = Modifier.height(48.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C7B7)),
                                         ) {
-                                            Text("Apply Cookies", fontSize = 11.sp)
+                                            Text("Save", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
 
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(6.dp))
 
-                                Button(
-                                    onClick = { startDeploy(uploadedFile) },
-                                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PocketOrange),
+                                // Deploy Actions
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Deploy to ${selectedPlatform.label}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    // Open Netlify Drop in Browser View
+                                    OutlinedButton(
+                                        onClick = {
+                                            showProjectDetails = false
+                                            publicNavUrl = "https://app.netlify.com/drop"
+                                            publicWebView?.loadUrl("https://app.netlify.com/drop")
+                                        },
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(17.dp), tint = Color(0xFF00C7B7))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Open Netlify Drop", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                    }
+
+                                    // Direct Deploy to Netlify via API
+                                    Button(
+                                        onClick = { deployViaApi(uploadedFile) },
+                                        modifier = Modifier.weight(1f).height(46.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PocketOrange),
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(17.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Deploy via API", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                    }
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (showLoginDialog) {
+        Dialog(
+            onDismissRequest = {
+                showLoginDialog = false
+                hasNetlifySession = checkNetlifyCookies()
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF00C7B7))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Netlify Account Login", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        Button(
+                            onClick = {
+                                CookieManager.getInstance().flush()
+                                hasNetlifySession = checkNetlifyCookies()
+                                showLoginDialog = false
+                                Toast.makeText(context, if (hasNetlifySession) "Netlify session synced!" else "Cookies updated", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(34.dp),
+                        ) {
+                            Text("Done & Sync", fontSize = 11.5.sp)
+                        }
+                    }
+                    HorizontalDivider()
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.databaseEnabled = true
+                                settings.setSupportZoom(true)
+                                CookieManager.getInstance().setAcceptCookie(true)
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        super.onPageFinished(view, url)
+                                        CookieManager.getInstance().flush()
+                                        hasNetlifySession = checkNetlifyCookies()
+                                    }
+                                }
+                                loadUrl("https://app.netlify.com/login")
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }

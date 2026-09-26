@@ -693,12 +693,6 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    "Autonomous On-Device AI Coding Engine",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
                             }
                         }
 

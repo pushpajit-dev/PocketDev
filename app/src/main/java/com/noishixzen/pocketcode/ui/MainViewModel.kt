@@ -615,9 +615,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!_state.value.projectTerminalRunning) return
         projectTerminalStopRequested = true
         viewModelScope.launch(Dispatchers.IO) {
-            projectTerminalProcess?.destroy()
-            delay(400)
-            if (projectTerminalProcess?.isAlive == true) projectTerminalProcess?.destroyForcibly()
+            projectTerminalProcess?.let { proc ->
+                interruptProcess(proc)
+                runCatching { (proc as? NativeSpawnProcess)?.interrupt() }
+                delay(100)
+                runCatching { proc.destroy() }
+                delay(200)
+                if (proc.isAlive) runCatching { proc.destroyForcibly() }
+            }
+            _state.update {
+                it.copy(
+                    projectTerminalRunning = false,
+                    projectTerminalLiveOutput = "",
+                    projectTerminalCommand = null,
+                )
+            }
         }
     }
 
@@ -631,7 +643,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearProjectTerminal() {
         val project = _state.value.activeProject ?: return
-        if (_state.value.projectTerminalRunning) return
+        if (_state.value.projectTerminalRunning) {
+            stopProjectTerminalCommand()
+        }
         _state.update { it.copy(projectTerminalLines = emptyList(), projectTerminalLiveOutput = "") }
         saveProjectTerminal(project.id, _state.value.projectTerminalCwd, emptyList())
     }

@@ -194,6 +194,14 @@ class AppPreferences(private val context: Context) {
         preferences.edit().putString("project_icon_$projectId", iconName).apply()
     }
 
+    fun getProjectTokens(projectId: String): Long =
+        preferences.getLong("project_tokens_$projectId", 0L)
+
+    fun addProjectTokens(projectId: String, count: Long) {
+        val current = getProjectTokens(projectId)
+        preferences.edit().putLong("project_tokens_$projectId", current + count).apply()
+    }
+
     fun saveProvider(profile: ProviderProfile, agent: AgentKind? = null) {
         val editor = preferences.edit()
             .putString("provider_kind", profile.kind.name)

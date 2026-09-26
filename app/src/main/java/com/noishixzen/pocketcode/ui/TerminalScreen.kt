@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Terminal
@@ -182,26 +183,62 @@ fun TerminalScreen(
         topBar = {
             if (compactHeader) {
                 Column {
+                    val hasTerminalError = lines.lastOrNull()?.exitCode != null && lines.lastOrNull()?.exitCode != 0
+                    val isBuildingOrFreezed = currentCommand?.contains("build", ignoreCase = true) == true
+                    val fanColor = when {
+                        hasTerminalError -> Color(0xFFE53935)       // Red: went wrong
+                        isBuildingOrFreezed -> Color.White          // White: freeze system or project build
+                        isRunning -> Color(0xFFFFB300)              // Yellow: fair / running
+                        else -> PocketGreen                         // Green: ready
+                    }
+
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(PocketOrange.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.Default.Terminal, contentDescription = null, tint = PocketOrange, modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(Modifier.width(11.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text(subtitle, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (isRunning || onStop != null || onInterrupt != null) {
-                            IconButton(onClick = { onStop?.invoke() ?: onInterrupt?.invoke() }, modifier = Modifier.size(38.dp)) {
-                                Icon(Icons.Default.StopCircle, contentDescription = "Terminate / Stop Process", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                        Text(
+                            text = "Project Terminal",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        ServerFanIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = fanColor,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        if (isRunning) {
+                            IconButton(
+                                onClick = { onStop?.invoke() ?: onInterrupt?.invoke() },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Stop,
+                                    contentDescription = "Stop Process",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        } else {
+                            val lastCmd = currentCommand ?: lines.lastOrNull()?.command
+                            IconButton(
+                                onClick = {
+                                    if (commandInput.text.isNotBlank()) {
+                                        submitCommand()
+                                    } else if (!lastCmd.isNullOrBlank()) {
+                                        onRun(lastCmd)
+                                    } else {
+                                        openTerminalKeyboard()
+                                    }
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = "Run Process",
+                                    tint = PocketGreen,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                         IconButton(onClick = onClear, modifier = Modifier.size(38.dp)) {
@@ -219,6 +256,15 @@ fun TerminalScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
                 }
             } else {
+                val hasTerminalError = lines.lastOrNull()?.exitCode != null && lines.lastOrNull()?.exitCode != 0
+                val isBuildingOrFreezed = currentCommand?.contains("build", ignoreCase = true) == true
+                val fanColor = when {
+                    hasTerminalError -> Color(0xFFE53935)       // Red: went wrong
+                    isBuildingOrFreezed -> Color.White          // White: freeze system or project build
+                    isRunning -> Color(0xFFFFB300)              // Yellow: fair / running
+                    else -> PocketGreen                         // Green: ready
+                }
+
                 TopAppBar(
                     modifier = Modifier.padding(top = 8.dp),
                     title = {
@@ -252,9 +298,29 @@ fun TerminalScreen(
                         }
                     },
                     actions = {
-                        if (isRunning || onStop != null || onInterrupt != null) {
+                        ServerFanIndicator(
+                            modifier = Modifier.size(17.dp),
+                            color = fanColor,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        if (isRunning) {
                             IconButton(onClick = { onStop?.invoke() ?: onInterrupt?.invoke() }) {
-                                Icon(Icons.Default.StopCircle, contentDescription = "Terminate / Stop Process", tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Stop, contentDescription = "Stop Process", tint = MaterialTheme.colorScheme.error)
+                            }
+                        } else {
+                            val lastCmd = currentCommand ?: lines.lastOrNull()?.command
+                            IconButton(
+                                onClick = {
+                                    if (commandInput.text.isNotBlank()) {
+                                        submitCommand()
+                                    } else if (!lastCmd.isNullOrBlank()) {
+                                        onRun(lastCmd)
+                                    } else {
+                                        openTerminalKeyboard()
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Run Process", tint = PocketGreen)
                             }
                         }
                         IconButton(onClick = onClear) {

@@ -25,7 +25,10 @@ val PocketOrangeDeep = Color(0xFFD96324)   // Warm terracotta amber
 val PocketOrangeAmber = Color(0xFFF09C38)  // Golden amber
 val PocketOrangeLight = Color(0xFFFFDEBC)  // Soft cream baich
 val PocketBlue = Color(0xFF8EA8FF)
-val PocketGreen = Color(0xFF69D69E)
+val PocketGreen = Color(0xFF68784B)           // Hazzy olive green #68784b
+val HazzyGreen = Color(0xFF68784B)            // Hazzy theme primary #68784b
+val HazzyGreenLight = Color(0xFF879767)       // Radiant olive green
+val HazzyGreenDark = Color(0xFF4D5936)        // Deep olive green
 
 val PocketBackgroundDark = Color(0xFF0C0E12)
 val PocketSurfaceDark = Color(0xFF13171F)

@@ -3644,8 +3644,22 @@ private fun ProjectsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.padding(top = 8.dp),
-                title = { Row(verticalAlignment = Alignment.CenterVertically) { BrandMark(compact = true); Spacer(Modifier.width(9.dp)); Text("PocketDev", fontWeight = FontWeight.Bold) } },
+                modifier = Modifier.padding(top = 4.dp),
+                title = {
+                    Column {
+                        Text(
+                            text = "Projects",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = MaterialTheme.colorScheme.onBackground,
+                        )
+                        Text(
+                            text = "Workspaces & repositories",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -3657,10 +3671,6 @@ private fun ProjectsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("Projects", fontSize = 20.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(2.dp))
-                Text("Workspaces and repositories", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -3874,6 +3884,8 @@ private fun ProjectsScreen(
                         project = project,
                         taskRunning = state.isRunning && state.activeProject?.id == project.id,
                         terminalRunning = state.projectTerminalRunning && state.activeProject?.id == project.id,
+                        hasError = (state.projectTerminalLines.lastOrNull()?.let { it.exitCode != null && it.exitCode != 0 } == true) && state.activeProject?.id == project.id,
+                        isBuilding = state.androidBuildRunning && state.activeProject?.id == project.id,
                         onOpen = { onOpen(project) },
                         onOpenEditor = {
                             context.startActivity(
@@ -4233,54 +4245,58 @@ fun packageDeploymentZip(
     onProgress: ((Float, String) -> Unit)? = null,
 ): Long {
     return try {
-        val canonicalDest = runCatching { destZip.canonicalPath }.getOrDefault(destZip.absolutePath)
-        val tempZip = File(destZip.parentFile ?: projectRoot.parentFile ?: projectRoot, ".temp_${System.currentTimeMillis()}_${destZip.name}")
-        if (tempZip.exists()) tempZip.delete()
-        tempZip.parentFile?.mkdirs()
+        if (!projectRoot.exists()) return 0L
+        destZip.parentFile?.mkdirs()
 
-        val rootPath = projectRoot.canonicalPath
-        val candidates = mutableListOf<File>()
-        projectRoot.walkTopDown().forEach { file ->
-            val canonicalFile = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-            if (canonicalFile == canonicalDest || canonicalFile == tempZip.canonicalPath || file.name.endsWith(".zip") || file.name.startsWith(".temp_")) {
-                return@forEach
-            }
-            val relative = canonicalFile.removePrefix(rootPath).removePrefix(File.separator)
-            if (relative.isNotEmpty()) {
-                val segments = relative.split(File.separator)
-                val skip = segments.any {
-                    it in setOf(
-                        "node_modules", ".git", ".cache", ".gradle", "build", ".idea",
-                        "__pycache__", ".venv"
-                    )
+        val tempZip = File(destZip.parentFile ?: projectRoot, ".temp_${System.currentTimeMillis()}_${destZip.name}")
+        if (tempZip.exists()) tempZip.delete()
+
+        val skipDirs = setOf(
+            "node_modules", ".git", ".cache", ".gradle", "build", ".idea",
+            "__pycache__", ".venv", ".temp"
+        )
+
+        val filesToZip = mutableListOf<File>()
+        if (projectRoot.isFile) {
+            filesToZip.add(projectRoot)
+        } else {
+            projectRoot.walkTopDown()
+                .onEnter { dir ->
+                    dir.name !in skipDirs && !dir.name.startsWith(".temp_")
                 }
-                if (!skip) {
-                    candidates.add(file)
+                .forEach { file ->
+                    if (file != projectRoot && !file.name.endsWith(".zip") && !file.name.startsWith(".temp_")) {
+                        filesToZip.add(file)
+                    }
                 }
-            }
         }
 
-        val totalFiles = candidates.size.coerceAtLeast(1)
+        val totalFiles = filesToZip.size.coerceAtLeast(1)
         var processed = 0
 
-        ZipArchiveOutputStream(FileOutputStream(tempZip)).use { zos ->
-            zos.setMethod(ZipArchiveOutputStream.DEFLATED)
-            zos.setLevel(java.util.zip.Deflater.BEST_SPEED)
-            for (file in candidates) {
-                val relative = file.canonicalPath.removePrefix(rootPath).removePrefix(File.separator).replace(File.separatorChar, '/')
-                if (relative.isNotEmpty()) {
+        java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(java.io.FileOutputStream(tempZip))).use { zos ->
+            zos.setLevel(java.util.zip.Deflater.BEST_COMPRESSION)
+            for (file in filesToZip) {
+                val relPath = if (projectRoot.isFile) {
+                    file.name
+                } else {
+                    file.toRelativeString(projectRoot).replace(File.separatorChar, '/')
+                }
+
+                if (relPath.isNotBlank()) {
                     if (file.isDirectory) {
-                        val entry = ZipArchiveEntry("$relative/")
-                        zos.putArchiveEntry(entry)
-                        zos.closeArchiveEntry()
+                        val entry = java.util.zip.ZipEntry("$relPath/")
+                        entry.time = file.lastModified()
+                        zos.putNextEntry(entry)
+                        zos.closeEntry()
                     } else {
-                        val entry = ZipArchiveEntry(relative)
-                        entry.size = file.length()
-                        zos.putArchiveEntry(entry)
+                        val entry = java.util.zip.ZipEntry(relPath)
+                        entry.time = file.lastModified()
+                        zos.putNextEntry(entry)
                         file.inputStream().buffered().use { input ->
-                            input.copyTo(zos)
+                            input.copyTo(zos, bufferSize = 32 * 1024)
                         }
-                        zos.closeArchiveEntry()
+                        zos.closeEntry()
                     }
                 }
                 processed++
@@ -4366,6 +4382,8 @@ private fun ProjectCard(
     project: Project,
     taskRunning: Boolean,
     terminalRunning: Boolean,
+    hasError: Boolean = false,
+    isBuilding: Boolean = false,
     onOpen: () -> Unit,
     onOpenEditor: () -> Unit = {},
     onStopRunning: () -> Unit = {},
@@ -4405,60 +4423,52 @@ private fun ProjectCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     ) {
         Row(
-            modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clickable { showIconPicker = true },
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = iconVector,
-                        contentDescription = "Change Project Icon",
-                        tint = PocketOrange,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = project.name,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 14.5.sp,
+                    fontSize = 15.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(2.dp))
+                val isProjectBuilding = isBuildingZip || isBuilding
+                val isFairRunning = taskRunning || terminalRunning
+
+                val fanColor = when {
+                    hasError -> Color(0xFFE53935)       // Red: went wrong
+                    isProjectBuilding -> Color.White    // White: freezed system or project build
+                    isFairRunning -> Color(0xFFFFB300)  // Yellow: fair / terminal or task running
+                    else -> PocketGreen                 // Green: ready / normal
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (taskRunning || terminalRunning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(11.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.width(5.dp))
+                    // Small rotating server fan animating, color dynamic based on state
+                    ServerFanIndicator(
+                        modifier = Modifier.size(13.dp),
+                        color = fanColor,
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    if (isFairRunning || isProjectBuilding || hasError) {
+                        val statusText = when {
+                            hasError -> "Error"
+                            isProjectBuilding -> "Building..."
+                            taskRunning -> "Task running"
+                            else -> "Terminal running"
+                        }
                         Text(
-                            text = if (taskRunning) "Task running" else "Terminal running",
-                            color = MaterialTheme.colorScheme.primary,
+                            text = statusText,
+                            color = fanColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                         Spacer(Modifier.width(6.dp))
-                    } else {
-                        // Small rotating green server fan indicating project server is ready
-                        ServerFanIndicator(
-                            modifier = Modifier.size(13.dp),
-                            color = PocketGreen,
-                        )
-                        Spacer(Modifier.width(5.dp))
                     }
                     Text(
                         text = "${project.language} · ${project.formattedUpdatedAt}",
@@ -4477,35 +4487,43 @@ private fun ProjectCard(
                 ) {
                     Icon(Icons.Default.MoreVert, "Project options", modifier = Modifier.size(20.dp))
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 4.dp),
+                ) {
                     if (taskRunning || terminalRunning) {
                         DropdownMenuItem(
-                            text = { Text("Stop Running Process", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) },
-                            leadingIcon = { Icon(Icons.Default.StopCircle, null, tint = MaterialTheme.colorScheme.error) },
+                            text = { Text("Stop", color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp, fontWeight = FontWeight.Medium) },
+                            leadingIcon = { Icon(Icons.Default.Stop, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(17.dp)) },
                             onClick = {
                                 menuOpen = false
                                 onStopRunning()
                             },
                         )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("Start", color = PocketGreen, fontSize = 12.5.sp, fontWeight = FontWeight.Medium) },
+                            leadingIcon = { Icon(Icons.Default.PlayArrow, null, tint = PocketGreen, modifier = Modifier.size(17.dp)) },
+                            onClick = {
+                                menuOpen = false
+                                onOpen()
+                            },
+                        )
                     }
                     DropdownMenuItem(
-                        text = { Text("Project Details & Path") },
-                        leadingIcon = { Icon(Icons.Default.Info, null) },
+                        text = { Text("Details", fontSize = 12.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Info, null, modifier = Modifier.size(17.dp)) },
                         onClick = { menuOpen = false; showInfo = true },
                     )
                     DropdownMenuItem(
-                        text = { Text("Change Icon") },
-                        leadingIcon = { Icon(Icons.Default.Image, null, tint = PocketOrange) },
+                        text = { Text("Icon", fontSize = 12.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Image, null, tint = PocketOrange, modifier = Modifier.size(17.dp)) },
                         onClick = { menuOpen = false; showIconPicker = true },
                     )
                     DropdownMenuItem(
-                        text = { Text("Open in Code Editor") },
-                        leadingIcon = { Icon(Icons.Default.Code, null, tint = PocketOrange) },
-                        onClick = { menuOpen = false; onOpenEditor() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Build Project (.zip)") },
-                        leadingIcon = { Icon(Icons.Default.Archive, null, tint = PocketOrange) },
+                        text = { Text("Build", fontSize = 12.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Archive, null, tint = PocketOrange, modifier = Modifier.size(17.dp)) },
                         onClick = {
                             menuOpen = false
                             val root = File(project.rootPath)
@@ -4528,13 +4546,13 @@ private fun ProjectCard(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Rename project") },
-                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                        text = { Text("Rename", fontSize = 12.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Edit, null, modifier = Modifier.size(17.dp)) },
                         onClick = { menuOpen = false; renameText = project.name; showRename = true },
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete project") },
-                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                        text = { Text("Remove", color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(17.dp)) },
                         onClick = { menuOpen = false; showDelete = true },
                     )
                 }
@@ -4614,6 +4632,16 @@ private fun ProjectCard(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
+                        Column {
+                            Text("Tokens Used", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val tokensUsed = appPrefs.getProjectTokens(project.id)
+                            val displayTokens = if (tokensUsed > 0) {
+                                "${java.text.NumberFormat.getIntegerInstance().format(tokensUsed)} tokens"
+                            } else {
+                                "0 tokens"
+                            }
+                            Text(displayTokens, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = PocketOrange)
+                        }
                         Column {
                             Text("Language", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(project.language, fontWeight = FontWeight.Medium, fontSize = 13.sp)
@@ -4966,84 +4994,115 @@ private fun WorkspaceScreen(
             dismissButton = { TextButton(onClick = onTerminalCancel) { Text("Cancel") } },
         )
     }
+    BackHandler(onBack = onBack)
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column(
-                        Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            text = state.activeProject?.name.orEmpty(),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp,
-                            lineHeight = 20.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.combinedClickable(
-                                onClick = {},
-                                onLongClick = {
-                                    Toast.makeText(context, state.activeProject?.name.orEmpty(), Toast.LENGTH_LONG).show()
-                                },
-                            ),
-                        )
-                        Text(
-                            text = "${activeChat?.title ?: "Chat"} · ${if (state.agentKind == AgentKind.ANTIGRAVITY) "Antigravity CLI" else state.agentKind.title}",
-                            fontSize = 11.5.sp,
-                            lineHeight = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Projects") } },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            state.activeProject?.let { project ->
-                                context.startActivity(
-                                    ProjectEditorActivity.createIntent(
-                                        context = context,
-                                        projectId = project.id,
-                                        projectName = project.name,
-                                        projectRootPath = project.rootPath,
-                                        initialFilePath = "",
-                                        themeMode = state.themeMode,
-                                    )
+            if (selectedTab != WorkspaceTab.TERMINAL && selectedTab != WorkspaceTab.PREVIEW) {
+                TopAppBar(
+                    title = {
+                        if (selectedTab == WorkspaceTab.FILES) {
+                            Column(
+                                Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = state.activeProject?.name.orEmpty(),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    lineHeight = 20.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.combinedClickable(
+                                        onClick = {},
+                                        onLongClick = {
+                                            Toast.makeText(context, state.activeProject?.name.orEmpty(), Toast.LENGTH_LONG).show()
+                                        },
+                                    ),
+                                )
+                                Text(
+                                    text = state.activeProject?.rootPath ?: "Project Files",
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        } else {
+                            Column(
+                                Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    text = activeChat?.title ?: "Chat",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp,
+                                    lineHeight = 20.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = if (state.agentKind == AgentKind.ANTIGRAVITY) "Antigravity CLI" else state.agentKind.title,
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
-                    ) {
-                        Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange)
-                    }
-                    if (isAndroidProject) {
-                        IconButton(
-                            onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                                    !context.packageManager.canRequestPackageInstalls()) {
-                                    unknownAppsLauncher.launch(
-                                        Intent(
-                                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                            Uri.parse("package:${context.packageName}"),
-                                        ),
-                                    )
-                                } else {
-                                    onBuildAndRunAndroid()
+                    },
+                    navigationIcon = {},
+                    actions = {
+                        if (selectedTab == WorkspaceTab.FILES) {
+                            IconButton(
+                                onClick = {
+                                    state.activeProject?.let { project ->
+                                        context.startActivity(
+                                            ProjectEditorActivity.createIntent(
+                                                context = context,
+                                                projectId = project.id,
+                                                projectName = project.name,
+                                                projectRootPath = project.rootPath,
+                                                initialFilePath = "",
+                                                themeMode = state.themeMode,
+                                            )
+                                        )
+                                    }
                                 }
-                            },
-                            enabled = !state.androidBuildRunning && !state.isRunning && !state.projectTerminalRunning,
-                        ) {
-                            if (state.androidBuildRunning) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else Icon(Icons.Default.PlayArrow, "Build and run Android app")
+                            ) {
+                                Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange)
+                            }
                         }
-                    }
-                    IconButton(onClick = { showChats = true }) { Icon(Icons.Default.History, "Project chats") }
-                    if (state.isRunning) CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+                        if (isAndroidProject) {
+                            IconButton(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                                        !context.packageManager.canRequestPackageInstalls()) {
+                                        unknownAppsLauncher.launch(
+                                            Intent(
+                                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                Uri.parse("package:${context.packageName}"),
+                                            ),
+                                        )
+                                    } else {
+                                        onBuildAndRunAndroid()
+                                    }
+                                },
+                                enabled = !state.androidBuildRunning && !state.isRunning && !state.projectTerminalRunning,
+                            ) {
+                                if (state.androidBuildRunning) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                else Icon(Icons.Default.PlayArrow, "Build and run Android app")
+                            }
+                        }
+                        if (selectedTab == WorkspaceTab.CHAT) {
+                            IconButton(onClick = { showChats = true }) { Icon(Icons.Default.History, "Project chats") }
+                        }
+                        if (state.isRunning) CircularProgressIndicator(Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            }
         },
         bottomBar = {
             if (!keyboardVisible) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
@@ -5591,29 +5650,26 @@ private fun FilesTab(
                         expanded = activeMenuPath == entry.path,
                         onDismissRequest = { activeMenuPath = null },
                     ) {
-                        if (fileObj != null) {
+                        if (fileObj != null && entry.isDirectory) {
                             DropdownMenuItem(
-                                text = { Text(if (entry.isDirectory) "Deploy folder to Netlify" else "Upload to Netlify") },
-                                leadingIcon = { Icon(Icons.Default.CloudUpload, null, tint = Color(0xFF00C7B7)) },
+                                text = { Text("Build (.zip)") },
+                                leadingIcon = { Icon(Icons.Default.Archive, null, tint = PocketOrange) },
                                 onClick = {
                                     activeMenuPath = null
-                                    if (entry.isDirectory) {
-                                        coroutineScope.launch {
-                                            isBuilding = true
-                                            buildProgress = 0f
-                                            buildCurrentFile = "Packaging ${fileObj.name}..."
-                                            val destZip = File(fileObj.parentFile ?: fileObj, "${fileObj.name}-build.zip")
-                                            withContext(Dispatchers.IO) {
-                                                packageDeploymentZip(fileObj, destZip) { prog, file ->
-                                                    buildProgress = prog
-                                                    buildCurrentFile = file
-                                                }
+                                    coroutineScope.launch {
+                                        isBuilding = true
+                                        buildProgress = 0f
+                                        buildCurrentFile = "Packaging ${fileObj.name}..."
+                                        val destZip = File(fileObj.parentFile ?: fileObj, "${fileObj.name}-build.zip")
+                                        val size = withContext(Dispatchers.IO) {
+                                            packageDeploymentZip(fileObj, destZip) { prog, file ->
+                                                buildProgress = prog
+                                                buildCurrentFile = file
                                             }
-                                            isBuilding = false
-                                            onUploadToPlatform(destZip, DeployPlatform.NETLIFY)
                                         }
-                                    } else {
-                                        onUploadToPlatform(fileObj, DeployPlatform.NETLIFY)
+                                        isBuilding = false
+                                        Toast.makeText(context, "Build created: ${destZip.name} (${formatMegabytes(size)}) in project files", Toast.LENGTH_LONG).show()
+                                        onRefresh()
                                     }
                                 },
                             )
@@ -6655,17 +6711,9 @@ private fun PreviewTab(
     }
 
     // Public Deploy State (Exclusively Netlify Browser Drop)
-    var selectedDeployProject by remember(project, allProjects) {
-        mutableStateOf(project ?: allProjects.firstOrNull())
-    }
-    var showProjectBottomSheet by rememberSaveable { mutableStateOf(false) }
     var publicNavUrl by rememberSaveable { mutableStateOf("https://app.netlify.com/drop") }
     var deployedPublicUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var publicWebView by remember { mutableStateOf<WebView?>(null) }
-    var pendingUploadZipUri by remember { mutableStateOf<Uri?>(null) }
-    var isBuildingForUpload by remember { mutableStateOf(false) }
-    var uploadBuildProgress by remember { mutableFloatStateOf(0f) }
-    var uploadBuildFile by remember { mutableStateOf("") }
     var fileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -6684,71 +6732,11 @@ private fun PreviewTab(
         fileChooserCallback = null
     }
 
-    fun triggerNetlifyUpload(targetProj: Project?) {
-        val proj = targetProj ?: selectedDeployProject ?: project
-        if (proj == null) {
-            Toast.makeText(context, "No project selected to upload", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val root = File(proj.rootPath)
-        if (!root.exists()) {
-            Toast.makeText(context, "Project files not found", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        coroutineScope.launch {
-            val zipFile = File(root, "${proj.slug}-build.zip")
-            if (!zipFile.exists() || zipFile.length() == 0L) {
-                isBuildingForUpload = true
-                uploadBuildProgress = 0f
-                uploadBuildFile = "Scanning ${proj.name}..."
-                withContext(Dispatchers.IO) {
-                    packageDeploymentZip(root, zipFile) { prog, file ->
-                        uploadBuildProgress = prog
-                        uploadBuildFile = file
-                    }
-                }
-                isBuildingForUpload = false
-            }
-
-            val fileUri = runCatching {
-                FileProvider.getUriForFile(context, "${context.packageName}.files", zipFile)
-            }.getOrElse { Uri.fromFile(zipFile) }
-
-            pendingUploadZipUri = fileUri
-
-            withContext(Dispatchers.Main) {
-                publicNavUrl = "https://app.netlify.com/drop"
-                val js = """
-                    (function() {
-                        var input = document.querySelector('input[type="file"]');
-                        if (input) {
-                            input.click();
-                        } else {
-                            window.location.href = 'https://app.netlify.com/drop';
-                        }
-                    })();
-                """.trimIndent()
-                publicWebView?.evaluateJavascript(js, null)
-                Toast.makeText(context, "Uploading ${zipFile.name} to Netlify...", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    LaunchedEffect(triggerDeploy, uploadedFile) {
+    LaunchedEffect(triggerDeploy) {
         if (triggerDeploy) {
             selectedMode = PreviewMode.PUBLIC
             onModeChanged(PreviewMode.PUBLIC)
             onDeployStarted()
-            if (uploadedFile != null && uploadedFile.exists()) {
-                val fileUri = runCatching {
-                    FileProvider.getUriForFile(context, "${context.packageName}.files", uploadedFile)
-                }.getOrElse { Uri.fromFile(uploadedFile) }
-                pendingUploadZipUri = fileUri
-                publicWebView?.evaluateJavascript("var input = document.querySelector('input[type=\"file\"]'); if (input) input.click();", null)
-            } else {
-                triggerNetlifyUpload(selectedDeployProject ?: project)
-            }
         }
     }
 
@@ -7040,6 +7028,15 @@ private fun PreviewTab(
                             }
                         }
                         IconButton(
+                            onClick = {
+                                publicNavUrl = "https://app.netlify.com/drop"
+                                publicWebView?.loadUrl("https://app.netlify.com/drop")
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(Icons.Default.CloudUpload, "Go to Netlify Drop", modifier = Modifier.size(18.dp), tint = Color(0xFF00C7B7))
+                        }
+                        IconButton(
                             onClick = { publicWebView?.reload() },
                             modifier = Modifier.size(36.dp),
                         ) {
@@ -7057,8 +7054,8 @@ private fun PreviewTab(
                     }
                 }
 
-                // Browser Viewport for Netlify Drop & Deployments
-                Box(Modifier.weight(1f)) {
+                // Fullscreen Browser Viewport for Netlify Drop & Deployments
+                Box(Modifier.fillMaxSize()) {
                     AndroidView(
                         factory = { ctx ->
                             WebView(ctx).apply {
@@ -7096,16 +7093,21 @@ private fun PreviewTab(
                                     ): Boolean {
                                         fileChooserCallback?.onReceiveValue(null)
                                         fileChooserCallback = filePathCallback
-                                        val pending = pendingUploadZipUri
-                                        if (pending != null) {
-                                            filePathCallback?.onReceiveValue(arrayOf(pending))
-                                            fileChooserCallback = null
-                                            pendingUploadZipUri = null
-                                            return true
-                                        }
-                                        val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                                            type = "*/*"
-                                            addCategory(Intent.CATEGORY_OPENABLE)
+                                        val intent = try {
+                                            fileChooserParams?.createIntent()?.apply {
+                                                addCategory(Intent.CATEGORY_OPENABLE)
+                                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                            } ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                                addCategory(Intent.CATEGORY_OPENABLE)
+                                                type = "*/*"
+                                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                            }
+                                        } catch (_: Exception) {
+                                            Intent(Intent.ACTION_GET_CONTENT).apply {
+                                                addCategory(Intent.CATEGORY_OPENABLE)
+                                                type = "*/*"
+                                                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                                            }
                                         }
                                         return try {
                                             filePickerLauncher.launch(intent)
@@ -7123,6 +7125,15 @@ private fun PreviewTab(
                                         super.onPageFinished(view, url)
                                         url?.let { target ->
                                             publicNavUrl = target
+                                            // When user logs in on Netlify (e.g. netlify.com / app.netlify.com), redirect directly to netlify drop!
+                                            val isPostLogin = target.contains("app.netlify.com/teams") ||
+                                                target.equals("https://app.netlify.com", ignoreCase = true) ||
+                                                target.equals("https://app.netlify.com/", ignoreCase = true) ||
+                                                (target.contains("app.netlify.com") && !target.contains("login") && !target.contains("signup") && !target.contains("drop") && !target.contains("sites"))
+                                            if (isPostLogin) {
+                                                view?.loadUrl("https://app.netlify.com/drop")
+                                                return
+                                            }
                                             if (target.contains(".netlify.app") && !target.contains("app.netlify.com")) {
                                                 deployedPublicUrl = target
                                             } else if (target.contains("sites/")) {
@@ -7138,6 +7149,13 @@ private fun PreviewTab(
                                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                         val target = request?.url?.toString() ?: return false
                                         publicNavUrl = target
+                                        val isPostLogin = target.contains("app.netlify.com/teams") ||
+                                            target.equals("https://app.netlify.com", ignoreCase = true) ||
+                                            target.equals("https://app.netlify.com/", ignoreCase = true)
+                                        if (isPostLogin) {
+                                            view?.loadUrl("https://app.netlify.com/drop")
+                                            return true
+                                        }
                                         if (target.contains(".netlify.app") && !target.contains("app.netlify.com")) {
                                             deployedPublicUrl = target
                                         } else if (target.contains("sites/")) {
@@ -7162,230 +7180,8 @@ private fun PreviewTab(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-
-                // Bottom Control Bar
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                                .clickable { showProjectBottomSheet = true },
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(Icons.Default.Folder, null, tint = PocketOrange, modifier = Modifier.size(17.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = selectedDeployProject?.name ?: project?.name ?: "Select Project",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Icon(Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                            }
-                        }
-
-                        Spacer(Modifier.width(10.dp))
-
-                        Button(
-                            onClick = { triggerNetlifyUpload(selectedDeployProject ?: project) },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C7B7)),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                            modifier = Modifier.height(42.dp),
-                        ) {
-                            Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Upload", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
             }
         }
-    }
-
-    // Bottom Sheet for selecting project to deploy
-    if (showProjectBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showProjectBottomSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Archive, null, tint = PocketOrange, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Select Project to Deploy",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Choose a project to drop and deploy on Netlify",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(14.dp))
-
-                val availableProjects = remember(allProjects, project) {
-                    if (allProjects.isNotEmpty()) allProjects
-                    else if (project != null) listOf(project)
-                    else emptyList()
-                }
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 300.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(availableProjects, key = { it.id }) { proj ->
-                        val isSelected = (selectedDeployProject?.id ?: project?.id) == proj.id
-                        val root = File(proj.rootPath)
-                        val zipFile = File(root, "${proj.slug}-build.zip")
-                        val zipExists = zipFile.exists() && zipFile.length() > 0L
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) PocketOrange.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isSelected) PocketOrange.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selectedDeployProject = proj
-                                },
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    Icons.Default.Folder,
-                                    null,
-                                    tint = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        proj.name,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        if (zipExists) "Build ZIP ready · ${formatMegabytes(zipFile.length())}" else "${proj.language} · Auto-build on upload",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Normal,
-                                        color = if (zipExists) PocketGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                if (isSelected) {
-                                    Icon(Icons.Default.CheckCircle, null, tint = PocketOrange, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                Button(
-                    onClick = {
-                        showProjectBottomSheet = false
-                        triggerNetlifyUpload(selectedDeployProject ?: project)
-                    },
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C7B7)),
-                ) {
-                    Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Deploy Selected Project", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-            }
-        }
-    }
-
-    if (isBuildingForUpload) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Archive, null, tint = PocketOrange)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Packaging Project ZIP", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                }
-            },
-            text = {
-                Column(Modifier.fillMaxWidth()) {
-                    LinearProgressIndicator(
-                        progress = { uploadBuildProgress },
-                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                        color = PocketOrange,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = uploadBuildFile,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "${(uploadBuildProgress * 100).toInt()}%",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = PocketOrange,
-                        )
-                    }
-                }
-            },
-            confirmButton = {},
-        )
     }
 }
 

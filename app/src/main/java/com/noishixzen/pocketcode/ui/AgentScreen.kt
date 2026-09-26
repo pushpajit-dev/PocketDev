@@ -325,11 +325,11 @@ fun AgentScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.82f)
-                    .padding(horizontal = 20.dp)
+                    .fillMaxHeight(0.85f)
+                    .padding(horizontal = 16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text("Select Model", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
                             "${filteredAntigravityModels.size} available for Antigravity",
@@ -342,7 +342,7 @@ fun AgentScreen(
                         else Icon(Icons.Default.Refresh, "Refresh models")
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = antigravitySearch,
                     onValueChange = { antigravitySearch = it },
@@ -352,7 +352,7 @@ fun AgentScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 if (filteredAntigravityModels.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -365,60 +365,15 @@ fun AgentScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(filteredAntigravityModels, key = { it }) { modelId ->
-                            val isSelected = state.antigravityModel == modelId
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) PocketOrange.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) PocketOrange.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onSetAntigravityModel(modelId)
-                                        showAntigravityModelSheet = false
-                                    },
-                            ) {
-                                Row(
-                                    Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                formatAntigravityModelName(modelId),
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 14.sp,
-                                                color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            val tier = formatAntigravityModelTier(modelId)
-                                            if (tier.isNotEmpty()) {
-                                                Spacer(Modifier.width(8.dp))
-                                                Surface(
-                                                    color = if (isSelected) PocketOrange.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant,
-                                                    shape = RoundedCornerShape(4.dp),
-                                                ) {
-                                                    Text(
-                                                        tier,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            modelId,
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    AgentSelectionDot(selected = isSelected)
-                                }
-                            }
+                            ModelSelectionItem(
+                                modelId = modelId,
+                                isSelected = state.antigravityModel == modelId,
+                                providerHint = "Google Antigravity",
+                                onSelect = {
+                                    onSetAntigravityModel(modelId)
+                                    showAntigravityModelSheet = false
+                                },
+                            )
                         }
                     }
                 }
@@ -436,14 +391,14 @@ fun AgentScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.82f)
-                    .padding(horizontal = 20.dp)
+                    .fillMaxHeight(0.85f)
+                    .padding(horizontal = 16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Available Models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text("Select Model", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
-                            if (models.isEmpty()) selectedKind.title else "${filteredModels.size} of ${models.size}",
+                            if (models.isEmpty()) "${selectedKind.title} · Recommended" else "${filteredModels.size} of ${models.size} available",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -456,7 +411,7 @@ fun AgentScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = modelSearch,
                     onValueChange = { modelSearch = it },
@@ -466,7 +421,7 @@ fun AgentScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 if (status != null) {
                     Surface(
@@ -480,7 +435,7 @@ fun AgentScreen(
                         ),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                             if (isDiscovering) {
                                 CircularProgressIndicator(
@@ -511,12 +466,12 @@ fun AgentScreen(
                                     fontSize = 10.sp,
                                     lineHeight = 14.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 23.dp, top = 5.dp),
+                                    modifier = Modifier.padding(start = 23.dp, top = 4.dp),
                                 )
                             }
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 if (isDiscovering) {
@@ -541,7 +496,7 @@ fun AgentScreen(
                         Modifier
                             .weight(1f)
                             .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         if (modelSearch.isNotBlank()) {
                             Surface(
@@ -570,7 +525,6 @@ fun AgentScreen(
                             }
                         }
 
-
                         Button(
                             onClick = ::discoverModels,
                             modifier = Modifier.fillMaxWidth(),
@@ -584,50 +538,25 @@ fun AgentScreen(
                         val recommended = remember(selectedKind) { defaultModelsForProvider(selectedKind) }
                         if (recommended.isNotEmpty()) {
                             Text(
-                                "Recommended Models",
+                                "Available Models",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
+                                modifier = Modifier.padding(top = 2.dp, bottom = 2.dp),
                             )
                             recommended.forEach { opt ->
-                                val isSelected = model == opt.id
-                                Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (isSelected) PocketOrange.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) PocketOrange.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            model = opt.id
-                                            modelSearch = ""
-                                            showModels = false
-                                        },
-                                ) {
-                                    Row(
-                                        Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                opt.displayName,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 14.sp,
-                                                color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            Text(
-                                                opt.id,
-                                                fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                        AgentSelectionDot(selected = isSelected)
-                                    }
-                                }
+                                ModelSelectionItem(
+                                    modelId = opt.id,
+                                    displayName = opt.displayName,
+                                    isFree = opt.isFree,
+                                    isSelected = model == opt.id,
+                                    providerHint = selectedKind.title,
+                                    onSelect = {
+                                        model = opt.id
+                                        modelSearch = ""
+                                        showModels = false
+                                    },
+                                )
                             }
                         }
                     }
@@ -666,55 +595,18 @@ fun AgentScreen(
                             }
                         }
                         items(filteredModels, key = { it.id }) { option ->
-                            val isSelected = model == option.id
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelected) PocketOrange.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) PocketOrange.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        model = option.id
-                                        modelSearch = ""
-                                        showModels = false
-                                    },
-                            ) {
-                                Row(
-                                    Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                option.displayName,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 14.sp,
-                                                color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            if (option.isFree) {
-                                                Spacer(Modifier.width(6.dp))
-                                                Text("FREE", color = Color(0xFF58C99C), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                        if (option.displayName != option.id) {
-                                            Text(
-                                                option.id,
-                                                fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                    }
-                                    AgentSelectionDot(selected = isSelected)
-                                }
-                            }
+                            ModelSelectionItem(
+                                modelId = option.id,
+                                displayName = option.displayName,
+                                isFree = option.isFree,
+                                isSelected = model == option.id,
+                                providerHint = selectedKind.title,
+                                onSelect = {
+                                    model = option.id
+                                    modelSearch = ""
+                                    showModels = false
+                                },
+                            )
                         }
                     }
                 }
@@ -765,29 +657,6 @@ fun AgentScreen(
                             )
                         }
                     }
-                },
-                actions = {
-                    // Top Bar Live Status Pill
-                    Surface(
-                        color = pillBg,
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, dot.copy(alpha = 0.35f)),
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(Modifier.size(6.5.dp).background(dot, CircleShape))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (pillLoading) "Checking" else label,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = dot,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(12.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -1095,24 +964,6 @@ fun AgentScreen(
                     onUpdate = onUpdateAgent,
                 )
             }
-
-            // ── 4. Subtle Footer ──
-            item {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp, bottom = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        "API keys encrypted in Android secure storage · Terminal is accessible from any project",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center,
-                        lineHeight = 16.sp,
-                    )
-                }
-            }
         }
     }
 }
@@ -1357,49 +1208,37 @@ private fun AgentAntigravityCard(
                             .clickable { onOpenModelSheet() },
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(PocketOrange.copy(alpha = 0.12f), RoundedCornerShape(9.dp)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = PocketOrange,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                val currentModel = state.antigravityModel.ifBlank { "Select model" }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        formatAntigravityModelName(currentModel),
-                                        modifier = Modifier.weight(1f),
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Text(
-                                    currentModel,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Choose model",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            val currentModel = state.antigravityModel.ifBlank { "Select model" }
+                            val currentDetails = if (state.antigravityModel.isNotBlank()) {
+                                getModelDetails(state.antigravityModel, providerHint = "Google Antigravity")
+                            } else null
+
+                            Text(
+                                text = currentDetails?.name ?: formatAntigravityModelName(currentModel),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
                             )
+                            Spacer(Modifier.width(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                modifier = Modifier.clickable { onOpenModelSheet() },
+                            ) {
+                                Text(
+                                    text = "Select",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -1469,57 +1308,6 @@ private fun AgentAntigravityCard(
                     }
                 }
             }
-
-            if (auth.status == AntigravityAuthStatus.SIGNED_IN) {
-                OutlinedButton(
-                    onClick = onTest,
-                    enabled = state.apiPingStatus != ApiPingStatus.PINGING,
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    shape = RoundedCornerShape(13.dp),
-                    border = BorderStroke(1.dp, PocketOrange.copy(alpha = 0.7f)),
-                ) {
-                    if (state.apiPingStatus == ApiPingStatus.PINGING) {
-                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp, color = PocketOrange)
-                        Spacer(Modifier.width(8.dp))
-                    } else {
-                        Icon(Icons.Default.Refresh, null, Modifier.size(16.dp), tint = PocketOrange)
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Text(
-                        if (state.apiPingStatus == ApiPingStatus.PINGING) "Testing connection…" else "Test connection",
-                        color = PocketOrange,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-
-                state.apiPingMessage?.takeIf { state.apiPingStatus != ApiPingStatus.IDLE }?.let { message ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            if (state.apiPingStatus == ApiPingStatus.FAILED) Icons.Default.Warning else Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = if (state.apiPingStatus == ApiPingStatus.FAILED) MaterialTheme.colorScheme.error else Color(0xFF2E9D72),
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            message,
-                            fontSize = 10.sp,
-                            lineHeight = 14.sp,
-                            color = if (state.apiPingStatus == ApiPingStatus.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
-
-            Text(
-                "Automatic tool approval · Runs inside the private Linux workspace",
-                fontSize = 10.sp,
-                lineHeight = 14.sp,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
@@ -1702,13 +1490,42 @@ private fun AgentProviderCard(
                     )
                 }
 
-                PremiumSummaryRow(
-                    icon = Icons.Default.AutoAwesome,
-                    title = "AI model",
-                    subtitle = model.ifBlank { "Select or type a model ID" },
-                    expanded = false,
-                    onClick = onOpenModelSheet,
-                )
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth().clickable { onOpenModelSheet() },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val modelDisplayName = model.ifBlank { "Select model" }
+                        Text(
+                            text = modelDisplayName,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.clickable { onOpenModelSheet() },
+                        ) {
+                            Text(
+                                text = "Select",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
             } else {
                 Text(
                     "Run `claude setup-token` on a computer signed in to your Claude subscription, then save the generated token below.",
@@ -1862,32 +1679,28 @@ private fun AgentProviderCard(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = onValidate,
-                enabled = apiKey.isNotBlank() && !isDiscovering && !isValidating &&
-                    (selectedKind == ProviderKind.CLAUDE || (baseUrl.isNotBlank() && model.isNotBlank())),
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-                shape = RoundedCornerShape(13.dp),
-                border = BorderStroke(1.dp, PocketOrange.copy(alpha = 0.7f)),
-            ) {
-                if (isValidating) {
-                    CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp, color = PocketOrange)
-                    Spacer(Modifier.width(8.dp))
-                } else {
-                    Icon(if (selectedKind == ProviderKind.CLAUDE) Icons.Default.Check else Icons.Default.Refresh, null, Modifier.size(16.dp), tint = PocketOrange)
-                    Spacer(Modifier.width(8.dp))
+            if (selectedKind == ProviderKind.CLAUDE) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onValidate,
+                    enabled = apiKey.isNotBlank() && !isDiscovering && !isValidating,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    shape = RoundedCornerShape(13.dp),
+                    border = BorderStroke(1.dp, PocketOrange.copy(alpha = 0.7f)),
+                ) {
+                    if (isValidating) {
+                        CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp, color = PocketOrange)
+                        Spacer(Modifier.width(8.dp))
+                    } else {
+                        Icon(Icons.Default.Check, null, Modifier.size(16.dp), tint = PocketOrange)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        if (isValidating) "Saving token…" else "Save subscription token",
+                        color = PocketOrange,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
-                Text(
-                    when {
-                        isValidating && selectedKind == ProviderKind.CLAUDE -> "Saving token…"
-                        isValidating -> "Testing connection…"
-                        selectedKind == ProviderKind.CLAUDE -> "Save subscription token"
-                        else -> "Test connection"
-                    },
-                    color = PocketOrange,
-                    fontWeight = FontWeight.SemiBold,
-                )
             }
         }
     }
@@ -2061,9 +1874,308 @@ private fun AgentSelectionDot(selected: Boolean) {
     }
 }
 
+internal data class ModelItemDetails(
+    val id: String,
+    val name: String,
+    val provider: String,
+    val isRecommended: Boolean,
+    val isFree: Boolean,
+    val contextTokens: String,
+    val maxOutputTokens: String,
+    val categoryBadge: String,
+    val description: String,
+    val bestFor: String,
+)
+
+internal fun getModelDetails(
+    modelId: String,
+    displayName: String? = null,
+    isFree: Boolean = false,
+    providerHint: String? = null,
+): ModelItemDetails {
+    val cleanId = modelId.trim()
+    val lowerId = cleanId.lowercase()
+
+    return when {
+        // Claude 3.7 Sonnet / sonnet-4-6
+        lowerId.contains("3.7-sonnet") || lowerId.contains("sonnet-4-6") || lowerId.contains("claude-3-7") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Claude 3.7 Sonnet (Hybrid)",
+            provider = "Anthropic",
+            isRecommended = true,
+            isFree = isFree,
+            contextTokens = "200k tokens",
+            maxOutputTokens = "64k tokens",
+            categoryBadge = "Hybrid Reasoning",
+            description = "Anthropic's premier hybrid reasoning model. Supports fast standard outputs or deep chain-of-thought thinking for complex code architectures, multi-file refactoring, and subtle bugs.",
+            bestFor = "Autonomous coding agents, full-stack architectural reasoning, and multi-file code editing.",
+        )
+
+        // Claude 3.5 Sonnet
+        lowerId.contains("3.5-sonnet") || lowerId.contains("sonnet-3-5") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Claude 3.5 Sonnet v2",
+            provider = "Anthropic",
+            isRecommended = true,
+            isFree = isFree,
+            contextTokens = "200k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Coding Flagship",
+            description = "Industry-standard frontier model for software engineering. Excels at syntax accuracy, nuanced logic, tool use, and multi-language implementation.",
+            bestFor = "Daily development, code generation, terminal commands, and bug fixing.",
+        )
+
+        // Claude 3.5 Haiku
+        lowerId.contains("3.5-haiku") || lowerId.contains("haiku") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Claude 3.5 Haiku",
+            provider = "Anthropic",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "200k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Ultra Fast",
+            description = "Ultra-responsive, high-speed Anthropic model optimized for fast responses, lightweight editing, quick questions, and low latency completions.",
+            bestFor = "Rapid terminal suggestions, simple bug fixes, quick explanations.",
+        )
+
+        // Claude Opus
+        lowerId.contains("opus") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Claude 3.7 Opus (Thinking)",
+            provider = "Anthropic",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "200k tokens",
+            maxOutputTokens = "32k tokens",
+            categoryBadge = "Deep Thinker",
+            description = "Maximum cognitive capability with extended chain-of-thought analysis for complex systems architecture, security proofs, and mathematical reasoning.",
+            bestFor = "Difficult algorithms, formal verification, system architecture.",
+        )
+
+        // Gemini 3.8 Flash
+        lowerId.contains("3.8-flash") || lowerId.contains("gemini-3.8") -> ModelItemDetails(
+            id = cleanId,
+            name = if (cleanId.contains("high")) "Gemini 3.8 Flash (High)" else if (cleanId.contains("low")) "Gemini 3.8 Flash (Low)" else "Gemini 3.8 Flash",
+            provider = "Google Antigravity",
+            isRecommended = true,
+            isFree = isFree,
+            contextTokens = "1M tokens",
+            maxOutputTokens = "64k tokens",
+            categoryBadge = "Recommended",
+            description = "Google's next-generation Flash model featuring massive 1M token context, high-velocity inference, and native multi-modal capabilities.",
+            bestFor = "Whole-repository scans, large multi-file diffs, real-time code modifications.",
+        )
+
+        // Gemini 3.6 Flash
+        lowerId.contains("3.6-flash") || lowerId.contains("gemini-3.6") -> ModelItemDetails(
+            id = cleanId,
+            name = if (cleanId.contains("high")) "Gemini 3.6 Flash (High)" else if (cleanId.contains("low")) "Gemini 3.6 Flash (Low)" else "Gemini 3.6 Flash",
+            provider = "Google Antigravity",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "1M tokens",
+            maxOutputTokens = "32k tokens",
+            categoryBadge = "Stable",
+            description = "Dependable and robust Flash model with 1M context window and low latency for routine tasks.",
+            bestFor = "General coding tasks, documentation, and continuous chat.",
+        )
+
+        // Gemini 3.1 Pro
+        lowerId.contains("3.1-pro") || lowerId.contains("gemini-3.1") -> ModelItemDetails(
+            id = cleanId,
+            name = if (cleanId.contains("high")) "Gemini 3.1 Pro (High)" else "Gemini 3.1 Pro",
+            provider = "Google Antigravity",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "2M tokens",
+            maxOutputTokens = "64k tokens",
+            categoryBadge = "Pro Reasoning",
+            description = "Premier reasoning model with massive 2M token context, designed for multi-million token repository understanding.",
+            bestFor = "Large-scale enterprise repos, end-to-end framework redesigns.",
+        )
+
+        // DeepSeek R1 / Reasoner
+        lowerId.contains("deepseek-r1") || lowerId.contains("reasoner") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "DeepSeek R1",
+            provider = "DeepSeek",
+            isRecommended = true,
+            isFree = isFree,
+            contextTokens = "128k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Open Reasoning",
+            description = "High-capability open-weights reasoning model using reinforcement learning and explicit chain-of-thought tokens.",
+            bestFor = "Algorithmic logic, competitive programming, math proofs.",
+        )
+
+        // DeepSeek V3 / Flash
+        lowerId.contains("deepseek") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: (if (cleanId.contains("flash")) "DeepSeek-V4 Flash" else "DeepSeek V3"),
+            provider = "DeepSeek",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = if (cleanId.contains("flash")) "128k tokens" else "64k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Fast Code",
+            description = "Highly cost-effective coding model with competitive benchmarks across code generation and comprehension.",
+            bestFor = "General programming, code synthesis, refactoring.",
+        )
+
+        // GPT-4o
+        lowerId.contains("gpt-4o") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "GPT-4o",
+            provider = "OpenAI",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "128k tokens",
+            maxOutputTokens = "16k tokens",
+            categoryBadge = "Omni Flagship",
+            description = "OpenAI's flagship multimodal model with balanced intelligence and high output quality.",
+            bestFor = "Multimodal development, web apps, general software engineering.",
+        )
+
+        // Llama 3.3
+        lowerId.contains("llama") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Llama 3.3 70B",
+            provider = "Meta",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "128k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Open Weights",
+            description = "Meta's flagship open-weights model delivering frontier-level reasoning across general code and natural language.",
+            bestFor = "Open models, local/private hosting, general instructions.",
+        )
+
+        // Qwen 2.5 Coder
+        lowerId.contains("qwen") -> ModelItemDetails(
+            id = cleanId,
+            name = displayName?.takeIf { it.isNotBlank() && it != cleanId } ?: "Qwen 2.5 Coder 32B",
+            provider = "Alibaba / NVIDIA",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "32k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Code Specialist",
+            description = "Specialized open-weights coding model fine-tuned on extensive source code and developer documentation.",
+            bestFor = "Code completion, debugging, script automation.",
+        )
+
+        // GPT-OSS
+        lowerId.contains("gpt-oss") -> ModelItemDetails(
+            id = cleanId,
+            name = "GPT-OSS 120B",
+            provider = "Open Source",
+            isRecommended = false,
+            isFree = isFree,
+            contextTokens = "128k tokens",
+            maxOutputTokens = "8k tokens",
+            categoryBadge = "Open Source",
+            description = "Open weight large language model for reasoning and coding.",
+            bestFor = "General development and open-source models.",
+        )
+
+        // Fallback for custom or discovered models
+        else -> {
+            val provider = when {
+                lowerId.startsWith("anthropic/") || lowerId.contains("claude") -> "Anthropic"
+                lowerId.startsWith("google/") || lowerId.contains("gemini") -> "Google"
+                lowerId.startsWith("openai/") || lowerId.contains("gpt") -> "OpenAI"
+                lowerId.startsWith("meta-llama/") -> "Meta"
+                lowerId.startsWith("mistralai/") -> "Mistral"
+                lowerId.startsWith("deepseek/") -> "DeepSeek"
+                lowerId.startsWith("qwen/") -> "Alibaba"
+                else -> providerHint ?: "AI Provider"
+            }
+            val formattedName = displayName?.takeIf { it.isNotBlank() && it != cleanId }
+                ?: formatAntigravityModelName(cleanId)
+
+            ModelItemDetails(
+                id = cleanId,
+                name = formattedName,
+                provider = provider,
+                isRecommended = isFree || lowerId.contains("recommended"),
+                isFree = isFree,
+                contextTokens = "128k tokens",
+                maxOutputTokens = "8k tokens",
+                categoryBadge = if (isFree) "FREE" else "",
+                description = "High-performance model available through $provider.",
+                bestFor = "General programming, code completion, and developer assistance.",
+            )
+        }
+    }
+}
+
+@Composable
+internal fun ModelSelectionItem(
+    modelId: String,
+    displayName: String? = null,
+    isFree: Boolean = false,
+    isSelected: Boolean,
+    providerHint: String? = null,
+    onSelect: () -> Unit,
+) {
+    val details = remember(modelId, displayName, isFree, providerHint) {
+        getModelDetails(modelId, displayName, isFree, providerHint)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) PocketOrange.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(
+            1.dp,
+            if (isSelected) PocketOrange.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = details.name,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.5.sp,
+                color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(10.dp))
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSelected) PocketOrange else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) PocketOrange else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                ),
+                modifier = Modifier.clickable(onClick = onSelect),
+            ) {
+                Text(
+                    text = if (isSelected) "Selected" else "Select",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isSelected) Color(0xFF241107) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
 /** Provides popular default models for providers when discovery hasn't been run or is unavailable. */
 private fun defaultModelsForProvider(kind: ProviderKind): List<DiscoveredModel> = when (kind) {
     ProviderKind.DEEPSEEK -> listOf(
+        DiscoveredModel("deepseek-chat", "DeepSeek V3"),
+        DiscoveredModel("deepseek-reasoner", "DeepSeek R1 (Thinking)"),
         DiscoveredModel("deepseek-v4-flash", "DeepSeek-V4 Flash"),
     )
     ProviderKind.OPENCODE_ZEN -> listOf(
@@ -2076,10 +2188,11 @@ private fun defaultModelsForProvider(kind: ProviderKind): List<DiscoveredModel> 
         DiscoveredModel("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet (Hybrid)"),
         DiscoveredModel("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet v2"),
         DiscoveredModel("claude-3-5-haiku-20241022", "Claude 3.5 Haiku"),
+        DiscoveredModel("claude-opus-4-6-thinking", "Claude 3.7 Opus (Thinking)"),
     )
     ProviderKind.LLM_ROUTER -> listOf(
-        DiscoveredModel("deepseek/deepseek-r1", "DeepSeek R1 (via OpenRouter)"),
         DiscoveredModel("anthropic/claude-3.7-sonnet", "Claude 3.7 Sonnet"),
+        DiscoveredModel("deepseek/deepseek-r1", "DeepSeek R1 (via OpenRouter)"),
         DiscoveredModel("openai/gpt-4o", "GPT-4o"),
         DiscoveredModel("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
     )

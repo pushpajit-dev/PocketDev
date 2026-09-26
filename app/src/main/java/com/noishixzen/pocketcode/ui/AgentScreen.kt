@@ -106,6 +106,7 @@ import com.noishixzen.pocketcode.network.DiscoveredModel
 import com.noishixzen.pocketcode.network.ModelDiscoveryResult
 import com.noishixzen.pocketcode.runtime.AntigravityAuthStatus
 import com.noishixzen.pocketcode.ui.theme.PocketBlue
+import com.noishixzen.pocketcode.ui.theme.PocketGreen
 import com.noishixzen.pocketcode.ui.theme.PocketOrange
 import kotlinx.coroutines.launch
 
@@ -742,8 +743,13 @@ fun AgentScreen(
                             }
                         }
                         Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text("AI Agent", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Column(verticalArrangement = Arrangement.spacedBy((-1).dp)) {
+                            Text(
+                                "AI Agent",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                lineHeight = 18.sp,
+                            )
                             Text(
                                 if (isAntigravity) {
                                     "Antigravity · ${formatAntigravityModelName(state.antigravityModel)}"
@@ -751,6 +757,8 @@ fun AgentScreen(
                                     "${state.agentKind.title} · ${model.ifBlank { selectedKind.title }}"
                                 },
                                 fontSize = 11.sp,
+                                lineHeight = 13.sp,
+                                fontWeight = FontWeight.Normal,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1220,49 +1228,86 @@ private fun AgentAntigravityCard(
                 AntigravityAuthStatus.AWAITING_CODE -> {
                     val uriHandler = LocalUriHandler.current
                     auth.authorizationUrl?.let { url ->
-                        Button(
-                            onClick = { runCatching { uriHandler.openUri(url) } },
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(Icons.Default.OpenInBrowser, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Open Sign-in in Browser")
-                        }
-                        OutlinedButton(
-                            onClick = { clipboard.setText(AnnotatedString(url)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Copy Google Sign-in URL")
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                modifier = Modifier.weight(1f).clickable { runCatching { uriHandler.openUri(url) } },
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Default.OpenInBrowser, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Open Browser", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                modifier = Modifier.weight(1f).clickable { clipboard.setText(AnnotatedString(url)) },
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Copy URL", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
                         }
                     }
                     OutlinedTextField(
                         value = code,
                         onValueChange = onCode,
-                        label = { Text("One-time authorization code") },
+                        label = { Text("One-time authorization code", fontSize = 12.sp) },
                         singleLine = true,
+                        trailingIcon = {
+                            if (code.isNotBlank()) {
+                                IconButton(onClick = onSubmitCode) {
+                                    Icon(Icons.Default.Check, "Submit code", tint = PocketGreen)
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                     )
-                    Button(
-                        onClick = onSubmitCode,
-                        enabled = code.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text("Complete Sign-in")
-                    }
                 }
                 AntigravityAuthStatus.SIGNED_OUT, AntigravityAuthStatus.ERROR -> {
-                    Button(
-                        onClick = onStartLogin,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF34A853).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF34A853).copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth().clickable { onStartLogin() },
                     ) {
-                        Text(if (auth.status == AntigravityAuthStatus.ERROR) "Reconnect with Google" else "Sign in with Google")
+                        Row(
+                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier.size(20.dp).background(Color(0xFF34A853), CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("G", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (auth.status == AntigravityAuthStatus.ERROR) "Reconnect Google Account" else "Sign in with Google",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF34A853),
+                            )
+                        }
                     }
                 }
                 AntigravityAuthStatus.SIGNED_IN -> {}

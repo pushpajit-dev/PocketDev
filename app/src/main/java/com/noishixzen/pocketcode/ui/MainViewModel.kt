@@ -1884,6 +1884,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 pendingAttachments = emptyList(),
             )
         }
+        val projectDir = File(getApplication<Application>().filesDir, "workspaces/${project.id}")
+        if (projectDir.exists()) {
+            val pkg = File(projectDir, "package.json")
+            if (!pkg.exists()) {
+                initializeProjectFiles(projectDir, project.name, project.slug)
+            }
+        }
         refreshProjectFiles()
         viewModelScope.launch {
             val pending = activeRuntime().loadPendingChanges(project.id)
@@ -2035,11 +2042,169 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         preferences.saveProjects(_state.value.projects)
-        File(getApplication<Application>().filesDir, "workspaces/${project.id}").mkdirs()
+        val projectDir = File(getApplication<Application>().filesDir, "workspaces/${project.id}")
+        projectDir.mkdirs()
+        initializeProjectFiles(projectDir, project.name, project.slug)
         val firstChat = ProjectChat(title = "New chat")
         preferences.saveProjectChats(project.id, listOf(firstChat))
         _state.update { it.copy(projectChats = listOf(firstChat), activeChatId = firstChat.id) }
         refreshProjectFiles()
+    }
+
+    private fun initializeProjectFiles(projectDir: File, projectName: String, slug: String) {
+        if (!projectDir.exists()) projectDir.mkdirs()
+        val pkgFile = File(projectDir, "package.json")
+        if (!pkgFile.exists()) {
+            val safeName = projectName.replace("\"", "\\\"")
+            pkgFile.writeText(
+                """{
+  "name": "$slug",
+  "version": "1.0.0",
+  "description": "$safeName",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js",
+    "start": "node index.js",
+    "build": "mkdir -p dist && cp index.html dist/ 2>/dev/null || true"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}"""
+            )
+        } else {
+            runCatching {
+                val content = pkgFile.readText()
+                if (!content.contains("\"dev\"")) {
+                    val updated = if (content.contains("\"scripts\"")) {
+                        content.replaceFirst("\"scripts\":\\s*\\{".toRegex(), "\"scripts\": {\n    \"dev\": \"node index.js\",")
+                    } else {
+                        content.replaceFirst("{", "{\n  \"scripts\": { \"dev\": \"node index.js\", \"start\": \"node index.js\" },")
+                    }
+                    pkgFile.writeText(updated)
+                }
+            }
+        }
+
+        val indexJs = File(projectDir, "index.js")
+        if (!indexJs.exists()) {
+            indexJs.writeText(
+                """import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+  const safePath = path.normalize(req.url === '/' ? '/index.html' : req.url);
+  const filePath = path.join(__dirname, safePath);
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!DOCTYPE html><html><head><title>PocketDev</title><style>body{font-family:system-ui,sans-serif;padding:2rem;background:#121212;color:#eee}</style></head><body><h1>PocketDev Server</h1><p>Server running on port ' + PORT + '</p></body></html>');
+    } else {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.html': 'text/html',
+        '.js': 'text/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.svg': 'image/svg+xml'
+      };
+      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'text/plain' });
+      res.end(content);
+    }
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('> Server ready on http://localhost:' + PORT);
+});
+"""
+            )
+        }
+
+        val indexHtml = File(projectDir, "index.html")
+        if (!indexHtml.exists()) {
+            val safeName = projectName.replace("<", "&lt;").replace(">", "&gt;")
+            indexHtml.writeText(
+                """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>$safeName</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e6edf3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .tag {
+      display: inline-block;
+      background: rgba(240, 107, 53, 0.15);
+      color: #f06b35;
+      font-weight: 600;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(240, 107, 53, 0.3);
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
+    p { font-size: 14px; color: #8b949e; line-height: 1.5; margin-bottom: 24px; }
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #2ea043;
+      background: rgba(46, 160, 67, 0.1);
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(46, 160, 67, 0.3);
+    }
+    .dot { width: 8px; height: 8px; background: #2ea043; border-radius: 50%; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="tag">PocketDev v4.1</span>
+    <h1>$safeName</h1>
+    <p>Welcome to your Node.js application built with PocketDev mobile studio.</p>
+    <div class="status">
+      <span class="dot"></span>
+      <span>Local Server Active on :3000</span>
+    </div>
+  </div>
+</body>
+</html>"""
+            )
+        }
     }
 
     fun createQuickProject() {
@@ -2056,7 +2221,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             kind = ProjectKind.QUICK_PROJECT,
         )
         val firstChat = ProjectChat(title = "New chat")
-        File(getApplication<Application>().filesDir, "workspaces/${project.id}").mkdirs()
+        val projectDir = File(getApplication<Application>().filesDir, "workspaces/${project.id}")
+        projectDir.mkdirs()
+        initializeProjectFiles(projectDir, project.name, project.slug)
         preferences.saveProjectChats(project.id, listOf(firstChat))
         _state.update { it.copy(projects = listOf(project) + it.projects) }
         preferences.saveProjects(_state.value.projects)

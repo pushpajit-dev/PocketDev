@@ -44,6 +44,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.noishixzen.pocketcode.data.AppPreferences
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -4103,6 +4108,66 @@ fun packageDeploymentZip(projectRoot: File, destZip: File): Long {
 }
 
 @Composable
+fun ServerFanIndicator(
+    modifier: Modifier = Modifier,
+    color: Color = PocketGreen,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "serverFan")
+    val angle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "fanSpin",
+    )
+
+    Canvas(modifier = modifier.rotate(angle)) {
+        val r = size.minDimension / 2f
+        val center = Offset(size.width / 2f, size.height / 2f)
+
+        // Outer chassis ring
+        drawCircle(
+            color = color.copy(alpha = 0.35f),
+            radius = r - 0.5f,
+            center = center,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+
+        // 3 curved fan blades
+        val bladeCount = 3
+        val hubRadius = r * 0.28f
+        val bladeLength = r * 0.78f
+
+        for (i in 0 until bladeCount) {
+            val baseAngle = (i * 2.0 * Math.PI / bladeCount).toFloat()
+            val startX = center.x + hubRadius * kotlin.math.cos(baseAngle)
+            val startY = center.y + hubRadius * kotlin.math.sin(baseAngle)
+
+            val endAngle = baseAngle + 0.52f
+            val endX = center.x + bladeLength * kotlin.math.cos(endAngle)
+            val endY = center.y + bladeLength * kotlin.math.sin(endAngle)
+
+            drawLine(
+                color = color,
+                start = Offset(startX, startY),
+                end = Offset(endX, endY),
+                strokeWidth = 1.8.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+        }
+
+        // Center hub
+        drawCircle(
+            color = color,
+            radius = hubRadius,
+            center = center,
+        )
+    }
+}
+
+@Composable
 private fun ProjectCard(
     project: Project,
     taskRunning: Boolean,
@@ -4142,7 +4207,7 @@ private fun ProjectCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     ) {
         Row(
-            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
@@ -4171,11 +4236,11 @@ private fun ProjectCard(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (taskRunning || terminalRunning) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(12.dp),
+                            modifier = Modifier.size(11.dp),
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -4186,7 +4251,16 @@ private fun ProjectCard(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        Spacer(Modifier.width(6.dp))
+                    } else {
+                        // Small rotating green server fan indicating project server is ready
+                        ServerFanIndicator(
+                            modifier = Modifier.size(13.dp),
+                            color = PocketGreen,
+                        )
+                        Spacer(Modifier.width(5.dp))
                     }
                     Text(
                         text = "${project.language} · ${project.formattedUpdatedAt}",
@@ -4196,18 +4270,6 @@ private fun ProjectCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            IconButton(
-                onClick = { showInfo = true },
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(Icons.Default.Info, "Project Info", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            }
-            IconButton(
-                onClick = onOpenEditor,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange, modifier = Modifier.size(20.dp))
             }
             Box {
                 IconButton(

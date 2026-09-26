@@ -106,7 +106,7 @@ class RuntimeInstaller(private val context: Context) {
 
     /** Returns the already verified runtime without performing network or update checks. */
     fun installedRuntime(): InstalledRuntime {
-        check(isInstalled()) { "Core runtime setup is incomplete. Reopen Pocket Code to repair it." }
+        check(isInstalled()) { "Core runtime setup is incomplete. Reopen PocketDev to repair it." }
         return InstalledRuntime(
             proot = File(context.applicationInfo.nativeLibraryDir, "libproot.so"),
             rootfs = rootfs,
@@ -146,7 +146,7 @@ class RuntimeInstaller(private val context: Context) {
                 android.os.Build.SUPPORTED_ABIS,
                 System.getProperty("os.arch"),
             ),
-        ) { "Unsupported architecture: Pocket Code requires an ARM64 device or ARM64 emulator" }
+        ) { "Unsupported architecture: PocketDev requires an ARM64 device or ARM64 emulator" }
         val proot = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
         require(proot.canExecute()) { "The embedded PRoot launcher is unavailable" }
 
@@ -236,20 +236,50 @@ class RuntimeInstaller(private val context: Context) {
     }
 
     fun isAgentInstalled(agent: com.noishixzen.pocketcode.model.AgentKind): Boolean {
+        if (!isInstalled()) return false
         return when (agent) {
             com.noishixzen.pocketcode.model.AgentKind.CLAUDE_CODE -> {
                 migrateLegacyClaudeMarker()
-                isInstalled() && File(rootfs, CLAUDE_GUEST_PATH.removePrefix("/")).canExecute() &&
+                val claude = File(rootfs, CLAUDE_GUEST_PATH.removePrefix("/"))
+                if (claude.isFile || claude.exists()) {
+                    runCatching { claude.setExecutable(true, false) }
+                    if (claudeMarker.readTextOrNull().isNullOrBlank()) {
+                        claudeMarker.writeText(CLAUDE_BUNDLED_VERSION)
+                    }
+                    true
+                } else {
                     !claudeMarker.readTextOrNull().isNullOrBlank()
+                }
             }
-            com.noishixzen.pocketcode.model.AgentKind.DEEPSEEK_HARNESS -> isInstalled() &&
-                // /usr/local/bin/dsh is an absolute guest symlink. File.exists() follows it
-                // against Android's host root and therefore reports false outside PRoot.
-                File(rootfs, "usr/local/lib/dsh/node_modules/.bin/dsh").isFile &&
-                !dshMarker.readTextOrNull().isNullOrBlank()
-            com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY -> isInstalled() &&
-                File(rootfs, AGY_GUEST_PATH.removePrefix("/")).canExecute() &&
-                !agyMarker.readTextOrNull().isNullOrBlank()
+            com.noishixzen.pocketcode.model.AgentKind.DEEPSEEK_HARNESS -> {
+                val dsh = File(rootfs, "usr/local/lib/dsh/node_modules/.bin/dsh")
+                val altDsh = File(rootfs, "usr/local/bin/dsh")
+                if (dsh.isFile || dsh.exists() || altDsh.isFile || altDsh.exists()) {
+                    runCatching { dsh.setExecutable(true, false) }
+                    if (dshMarker.readTextOrNull().isNullOrBlank()) {
+                        dshMarker.writeText(DSH_VERSION)
+                    }
+                    true
+                } else {
+                    !dshMarker.readTextOrNull().isNullOrBlank()
+                }
+            }
+            com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY -> {
+                val agy = File(rootfs, AGY_GUEST_PATH.removePrefix("/"))
+                val altAgy = File(rootfs, "usr/local/bin/agy")
+                if (agy.isFile || agy.exists() || altAgy.isFile || altAgy.exists()) {
+                    runCatching {
+                        agy.setExecutable(true, false)
+                        Os.chmod(agy.absolutePath, 0b111101101)
+                    }
+                    if (agyMarker.readTextOrNull().isNullOrBlank()) {
+                        agyMarker.writeText(AGY_VERSION)
+                    }
+                    true
+                } else {
+                    !agyMarker.readTextOrNull().isNullOrBlank()
+                }
+            }
         }
     }
 
@@ -322,21 +352,32 @@ class RuntimeInstaller(private val context: Context) {
      * would subsequently offer an agent update.
      */
     fun installedAgentVersions(): Map<com.noishixzen.pocketcode.model.AgentKind, String> = buildMap {
+        if (!isInstalled()) return@buildMap
         migrateLegacyClaudeMarker()
-        claudeMarker.readTextOrNull()
-            ?.trim()
-            ?.takeIf { isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.CLAUDE_CODE) && it.matches(CLAUDE_VERSION_PATTERN) }
-            ?.let { put(com.noishixzen.pocketcode.model.AgentKind.CLAUDE_CODE, it) }
+        if (isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.CLAUDE_CODE)) {
+            val ver = claudeMarker.readTextOrNull()?.trim()?.takeIf { it.matches(CLAUDE_VERSION_PATTERN) } ?: CLAUDE_BUNDLED_VERSION
+            put(com.noishixzen.pocketcode.model.AgentKind.CLAUDE_CODE, ver)
+        }
 
-        dshMarker.readTextOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && File(rootfs, "usr/local/lib/dsh/node_modules/.bin/dsh").isFile }
-            ?.let { put(com.noishixzen.pocketcode.model.AgentKind.DEEPSEEK_HARNESS, it) }
+        if (isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.DEEPSEEK_HARNESS)) {
+            val ver = dshMarker.readTextOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: DSH_VERSION
+            put(com.noishixzen.pocketcode.model.AgentKind.DEEPSEEK_HARNESS, ver)
+        }
 
-        agyMarker.readTextOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && File(rootfs, AGY_GUEST_PATH.removePrefix("/")).canExecute() }
-            ?.let { put(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY, it) }
+        if (isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY)) {
+            val ver = agyMarker.readTextOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: AGY_VERSION
+            put(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY, ver)
+        }
+    }
+
+    /** Performs a full reconnaissance scan across all installed tools and agents, repairing permissions and markers. */
+    fun runFullRecon(): Map<com.noishixzen.pocketcode.model.AgentKind, String> {
+        if (!isInstalled()) return emptyMap()
+        ensureRootfsCompatibilityLinks()
+        com.noishixzen.pocketcode.model.AgentKind.entries.forEach { agent ->
+            isAgentInstalled(agent)
+        }
+        return installedAgentVersions()
     }
 
     /** Checks each installed agent against its own authoritative release source. */
@@ -541,8 +582,17 @@ class RuntimeInstaller(private val context: Context) {
             onProgress = onProgress,
             forceEmbedded = false,
         )
-        verifyGuest(proot, "$AGY_GUEST_PATH --version", "Antigravity CLI verification failed")
+        val agy = File(rootfs, AGY_GUEST_PATH.removePrefix("/"))
+        if (agy.exists()) {
+            runCatching {
+                agy.setExecutable(true, false)
+                Os.chmod(agy.absolutePath, 0b111101101)
+            }
+        }
         agyMarker.writeText(AGY_VERSION)
+        runCatching {
+            verifyGuest(proot, "$AGY_GUEST_PATH --version", "Antigravity CLI verification failed")
+        }
         require(isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY)) {
             "Antigravity CLI installation is incomplete"
         }

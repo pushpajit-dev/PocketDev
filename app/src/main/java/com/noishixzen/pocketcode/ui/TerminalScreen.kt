@@ -38,6 +38,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
@@ -197,6 +199,11 @@ fun TerminalScreen(
                             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             Text(subtitle, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        if (isRunning || onStop != null || onInterrupt != null) {
+                            IconButton(onClick = { onStop?.invoke() ?: onInterrupt?.invoke() }, modifier = Modifier.size(38.dp)) {
+                                Icon(Icons.Default.StopCircle, contentDescription = "Terminate / Stop Process", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
+                            }
+                        }
                         IconButton(onClick = onClear, modifier = Modifier.size(38.dp)) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Clear output", modifier = Modifier.size(20.dp))
                         }
@@ -245,6 +252,11 @@ fun TerminalScreen(
                         }
                     },
                     actions = {
+                        if (isRunning || onStop != null || onInterrupt != null) {
+                            IconButton(onClick = { onStop?.invoke() ?: onInterrupt?.invoke() }) {
+                                Icon(Icons.Default.StopCircle, contentDescription = "Terminate / Stop Process", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
                         IconButton(onClick = onClear) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Clear output")
                         }
@@ -326,7 +338,7 @@ fun TerminalScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (lines.isEmpty()) {
                                 Text(
-                                    "Pocket Code Terminal ready.\nType a bash command below or tap a quick command chip above.",
+                                    "PocketDev Terminal ready.\nType a bash command below or tap a quick command chip above.",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 12.sp,
                                     color = emptyStateColor,
@@ -473,9 +485,23 @@ fun TerminalScreen(
                     }
                     TerminalKeyButton("ALT", "Alt modifier", active = altActive, fixedWidth = true) { altActive = !altActive }
                     TerminalKeyButton("ESC", "Escape") { commandInput = TextFieldValue() }
-                    TerminalKeyButton("CTRL", "Control modifier; press C to interrupt", active = ctrlActive, fixedWidth = true) {
+                    TerminalKeyButton("CTRL", "Control modifier", active = ctrlActive, fixedWidth = true) {
                         ctrlActive = !ctrlActive
                         if (ctrlActive) openTerminalKeyboard()
+                    }
+                    androidx.compose.material3.Button(
+                        onClick = { onInterrupt?.invoke() ?: onStop?.invoke() },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(34.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Icon(Icons.Default.Stop, null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Ctrl+C", fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

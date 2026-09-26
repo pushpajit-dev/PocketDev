@@ -14,15 +14,16 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.view.WindowCompat
 
-// Modern Peach / Beige to Vivid Orange Gamut Palette
-val PocketPeach = Color(0xFFF7A56C)        // Peach / Baich
-val PocketPeachWarm = Color(0xFFFFB37C)    // Warm peach glow
-val PocketBeige = Color(0xFFE89858)        // Logo natural beige
-val PocketOrange = Color(0xFFFF6F00)       // Vivid modern gamut orange
-val PocketOrangeVibrant = Color(0xFFFF7A18)// High-gamut radiant orange
-val PocketOrangeDeep = Color(0xFFF4511E)   // Warm sunset vermilion
-val PocketOrangeAmber = Color(0xFFFFA000)  // Golden amber
-val PocketOrangeLight = Color(0xFFFFCC80)  // Soft peach/cream
+// Modern Peach / Beige to Warm Radiant Gamut Palette
+val PocketPeach = Color(0xFFF0B384)        // Warm peach / baich tone
+val PocketPeachWarm = Color(0xFFFFC59B)    // Radiant baich glow
+val PocketBeige = Color(0xFFE89858)        // Logo natural beige / baich
+val PocketBaich = Color(0xFFE5A672)        // Soft natural baich
+val PocketOrange = Color(0xFFE88239)       // Warm sunset amber (softer than neon orange)
+val PocketOrangeVibrant = Color(0xFFEB8A42)// Logo radiant baich-orange gamut
+val PocketOrangeDeep = Color(0xFFD96324)   // Warm terracotta amber
+val PocketOrangeAmber = Color(0xFFF09C38)  // Golden amber
+val PocketOrangeLight = Color(0xFFFFDEBC)  // Soft cream baich
 val PocketBlue = Color(0xFF8EA8FF)
 val PocketGreen = Color(0xFF69D69E)
 
@@ -79,13 +80,13 @@ fun helveticaTypography(): Typography {
 
 private val DarkColors = darkColorScheme(
     primary = PocketOrangeVibrant,
-    onPrimary = Color(0xFF1C0A00),
-    primaryContainer = Color(0xFF4A1E00),
+    onPrimary = Color(0xFF221105),
+    primaryContainer = Color(0xFF4C270E),
     onPrimaryContainer = PocketPeachWarm,
     secondary = PocketPeach,
-    onSecondary = Color(0xFF200C00),
-    secondaryContainer = Color(0xFF4E1602),
-    onSecondaryContainer = Color(0xFFFFDBD0),
+    onSecondary = Color(0xFF221105),
+    secondaryContainer = Color(0xFF522810),
+    onSecondaryContainer = Color(0xFFFFE0CF),
     tertiary = PocketGreen,
     onTertiary = Color(0xFF00391E),
     background = PocketBackgroundDark,
@@ -99,14 +100,14 @@ private val DarkColors = darkColorScheme(
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFFE65100),
+    primary = PocketOrange,
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFE8D6),
-    onPrimaryContainer = Color(0xFF3E1200),
-    secondary = Color(0xFFF4511E),
+    primaryContainer = Color(0xFFFCE9DB),
+    onPrimaryContainer = Color(0xFF431F07),
+    secondary = PocketPeach,
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFFFCCBC),
-    onSecondaryContainer = Color(0xFF380E00),
+    secondaryContainer = Color(0xFFFBE4D2),
+    onSecondaryContainer = Color(0xFF452009),
     tertiary = Color(0xFF16A34A),
     onTertiary = Color(0xFFFFFFFF),
     background = PocketBackgroundLight,
@@ -122,7 +123,11 @@ private val LightColors = lightColorScheme(
 enum class AppThemeMode { SYSTEM, DARK, LIGHT }
 
 @Composable
-fun PocketTheme(themeMode: AppThemeMode = AppThemeMode.SYSTEM, content: @Composable () -> Unit) {
+fun PocketTheme(
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    amoledBlack: Boolean = false,
+    content: @Composable () -> Unit
+) {
     val isDark = when (themeMode) {
         AppThemeMode.DARK -> true
         AppThemeMode.LIGHT -> false
@@ -139,8 +144,22 @@ fun PocketTheme(themeMode: AppThemeMode = AppThemeMode.SYSTEM, content: @Composa
         }
     }
 
+    val activeColors = if (isDark) {
+        if (amoledBlack) {
+            DarkColors.copy(
+                background = Color(0xFF000000),
+                surface = Color(0xFF000000),
+                surfaceVariant = Color(0xFF0A0C10),
+            )
+        } else {
+            DarkColors
+        }
+    } else {
+        LightColors
+    }
+
     MaterialTheme(
-        colorScheme = if (isDark) DarkColors else LightColors,
+        colorScheme = activeColors,
         typography = helveticaTypography(),
         content = content,
     )

@@ -47,9 +47,26 @@ class AntigravityAuthController(
     suspend fun beginLogin() = withContext(Dispatchers.IO) {
         if (process?.isAlive == true) return@withContext
         if (!installer.isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY)) {
+            installer.runFullRecon()
+        }
+        if (!installer.isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY)) {
+            mutableState.value = AntigravityAuthState(
+                AntigravityAuthStatus.STARTING,
+                message = "Preparing Antigravity CLI…",
+            )
+            runCatching {
+                installer.ensureAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY) { p ->
+                    mutableState.value = AntigravityAuthState(
+                        AntigravityAuthStatus.STARTING,
+                        message = "Setting up Antigravity CLI (${(p.fraction * 100).toInt()}%)...",
+                    )
+                }
+            }
+        }
+        if (!installer.isAgentInstalled(com.noishixzen.pocketcode.model.AgentKind.ANTIGRAVITY)) {
             mutableState.value = AntigravityAuthState(
                 AntigravityAuthStatus.ERROR,
-                message = "Install Antigravity CLI before signing in.",
+                message = "Install Antigravity CLI from Settings before signing in.",
             )
             return@withContext
         }

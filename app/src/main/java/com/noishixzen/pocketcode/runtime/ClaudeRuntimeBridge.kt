@@ -143,7 +143,7 @@ class ClaudeRuntimeBridge(
             formatGateway = if (provider.kind.protocol in setOf(
                     com.noishixzen.pocketcode.model.ProviderProtocol.OPENAI_CHAT,
                     com.noishixzen.pocketcode.model.ProviderProtocol.OPENAI_RESPONSES,
-                )) LocalFormatGateway(provider, secret).start() else null
+                )) LocalFormatGateway(provider, secret, com.noishixzen.pocketcode.data.AppPreferences(context).maxOutputTokens).start() else null
             val launch = RuntimeLaunchConfigBuilder.build(provider, authToken = secret, localGatewayUrl = formatGateway?.url)
             Log.d("ClaudeBridge", "Provider: ${provider.kind}, Model: ${provider.model}, BaseUrl: ${provider.baseUrl}")
             Log.d("ClaudeBridge", "Launch environment keys: ${launch.environment.keys}")

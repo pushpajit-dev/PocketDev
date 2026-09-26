@@ -22,24 +22,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val appPrefs = AppPreferences(this)
-            if (appPrefs.smooth120Hz) {
-                runCatching {
-                    val maxMode = display?.supportedModes?.maxByOrNull { it.refreshRate }
-                    if (maxMode != null) {
-                        val lp = window.attributes
-                        lp.preferredDisplayModeId = maxMode.modeId
-                        window.attributes = lp
-                    }
-                }
-            }
-        }
+        val appPrefs = AppPreferences(this)
+        com.noishixzen.pocketcode.util.DisplayUtils.applyDisplayRefreshRate(this)
 
         handleTerminalIntent(intent)
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
-            PocketTheme(themeMode = state.themeMode) {
+            PocketTheme(
+                themeMode = state.themeMode,
+                amoledBlack = appPrefs.amoledBlack,
+            ) {
                 PocketDevApp(vm)
             }
         }

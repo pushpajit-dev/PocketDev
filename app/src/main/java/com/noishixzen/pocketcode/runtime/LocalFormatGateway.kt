@@ -18,6 +18,7 @@ import org.json.JSONObject
 internal class LocalFormatGateway(
     private val profile: ProviderProfile,
     private val apiKey: String,
+    private val maxTokens: Int = 4096,
 ) : AutoCloseable {
     private val running = AtomicBoolean(true)
     private val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
@@ -83,7 +84,7 @@ internal class LocalFormatGateway(
         val target = JSONObject()
             .put("model", normalizeModel(profile.model))
             .put("stream", false)
-            .put("max_tokens", source.optInt("max_tokens", 4096))
+            .put("max_tokens", source.optInt("max_tokens", maxTokens))
         if (source.has("temperature")) target.put("temperature", source.get("temperature"))
         val messages = JSONArray()
         source.opt("system")?.let { system ->

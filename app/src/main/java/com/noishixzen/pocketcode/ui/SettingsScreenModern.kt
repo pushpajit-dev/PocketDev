@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -180,35 +181,44 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.padding(top = 8.dp),
+                modifier = Modifier.padding(top = 4.dp),
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                    shape = RoundedCornerShape(9.dp),
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
-                                    shape = RoundedCornerShape(9.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(17.dp),
+                    Column {
+                        Text("PocketDev", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Settings & Preferences", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                actions = {
+                    val isDark = when (state.themeMode) {
+                        AppThemeMode.DARK -> true
+                        AppThemeMode.LIGHT -> false
+                        AppThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                    }
+                    val rotation by androidx.compose.animation.core.animateFloatAsState(
+                        targetValue = if (isDark) 360f else 0f,
+                        label = "theme_rot"
+                    )
+                    IconButton(
+                        onClick = {
+                            com.noishixzen.pocketcode.util.HapticUtils.performHaptic(context)
+                            onSetThemeMode(if (isDark) AppThemeMode.LIGHT else AppThemeMode.DARK)
+                        },
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(38.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                shape = CircleShape
                             )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text("Settings", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                            Text("Preferences & Configuration", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle theme",
+                            tint = if (isDark) Color(0xFFFFB300) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .graphicsLayer { rotationZ = rotation }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -270,6 +280,10 @@ fun SettingsScreen(
                         onCheckedChange = {
                             smooth120Hz = it
                             appPrefs.smooth120Hz = it
+                            (context as? android.app.Activity)?.let { act ->
+                                com.noishixzen.pocketcode.util.DisplayUtils.applyDisplayRefreshRate(act)
+                            }
+                            com.noishixzen.pocketcode.util.HapticUtils.performHaptic(context)
                         },
                     )
                     TweakSwitchRow(
@@ -279,6 +293,7 @@ fun SettingsScreen(
                         onCheckedChange = {
                             hapticFeedback = it
                             appPrefs.hapticFeedback = it
+                            com.noishixzen.pocketcode.util.HapticUtils.performHaptic(context)
                         },
                     )
                     TweakSwitchRow(
@@ -288,6 +303,7 @@ fun SettingsScreen(
                         onCheckedChange = {
                             amoledBlack = it
                             appPrefs.amoledBlack = it
+                            com.noishixzen.pocketcode.util.HapticUtils.performHaptic(context)
                         },
                     )
 
@@ -452,7 +468,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.DeleteSweep, null, Modifier.size(17.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(cacheClearedMessage ?: "Clear temporary download cache")
+                        Text(cacheClearedMessage ?: "Clear Cache")
                     }
                 }
             }
@@ -563,12 +579,40 @@ fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (state.installedAgentVersions.isEmpty()) {
-                        RuntimeInfoRow("Status", "No verified agent installation")
-                    } else {
-                        AgentKind.entries.forEach { agent ->
-                            state.installedAgentVersions[agent]?.let { version ->
-                                RuntimeInfoRow(agent.title, "v$version")
+                    AgentKind.entries.forEach { agent ->
+                        val version = state.installedAgentVersions[agent]
+                        val isInstalling = state.agentInstalling == agent
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(agent.title, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                Text(
+                                    if (version != null) "Installed · v$version" else if (isInstalling) state.agentMessage ?: "Installing…" else "Not installed",
+                                    fontSize = 11.5.sp,
+                                    color = if (version != null) Color(0xFF4ADE80) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                if (isInstalling) {
+                                    Spacer(Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = { state.agentProgress },
+                                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    )
+                                }
+                            }
+                            if (version == null && !isInstalling) {
+                                Button(
+                                    onClick = { onInstallAgent(agent) },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.height(32.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                ) {
+                                    Text("Install", fontSize = 12.sp)
+                                }
                             }
                         }
                     }
@@ -627,14 +671,14 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Image(
                                 painter = painterResource(id = R.drawable.ic_pocketcode_logo),
-                                contentDescription = "Pocket Code Logo",
+                                contentDescription = "PocketDev Logo",
                                 modifier = Modifier.size(54.dp),
                                 contentScale = ContentScale.Fit,
                             )
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Pocket Code", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                    Text("PocketDev", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                     Spacer(Modifier.width(8.dp))
                                     Surface(
                                         color = PocketOrange.copy(alpha = 0.15f),
@@ -843,7 +887,14 @@ private fun AntigravityConnectionSettings(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 AntigravityAuthStatus.AWAITING_CODE -> {
+                    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                     auth.authorizationUrl?.let { url ->
+                        Button(
+                            onClick = { runCatching { uriHandler.openUri(url) } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Open Sign-in in Browser")
+                        }
                         OutlinedButton(
                             onClick = { clipboard.setText(AnnotatedString(url)) },
                             modifier = Modifier.fillMaxWidth(),

@@ -175,6 +175,21 @@ class AppPreferences(private val context: Context) {
         get() = preferences.getBoolean("tweak_auto_retry", true)
         set(value) { preferences.edit().putBoolean("tweak_auto_retry", value).apply() }
 
+    var appLanguage: String
+        get() = preferences.getString("app_language", "English") ?: "English"
+        set(value) { preferences.edit().putString("app_language", value).apply() }
+
+    var termsAccepted: Boolean
+        get() = preferences.getBoolean("terms_accepted", false)
+        set(value) { preferences.edit().putBoolean("terms_accepted", value).apply() }
+
+    fun getProjectIcon(projectId: String): String =
+        preferences.getString("project_icon_$projectId", "folder") ?: "folder"
+
+    fun setProjectIcon(projectId: String, iconName: String) {
+        preferences.edit().putString("project_icon_$projectId", iconName).apply()
+    }
+
     fun saveProvider(profile: ProviderProfile, agent: AgentKind? = null) {
         val editor = preferences.edit()
             .putString("provider_kind", profile.kind.name)
@@ -482,5 +497,15 @@ class AppPreferences(private val context: Context) {
     private fun String.toChatTitle(): String {
         val clean = replace(Regex("\\s+"), " ").trim()
         return if (clean.length <= 42) clean else clean.take(39).trimEnd() + "…"
+    }
+
+    companion object {
+        @Volatile
+        private var instance: AppPreferences? = null
+
+        fun get(context: Context): AppPreferences =
+            instance ?: synchronized(this) {
+                instance ?: AppPreferences(context.applicationContext).also { instance = it }
+            }
     }
 }

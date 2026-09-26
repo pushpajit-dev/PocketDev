@@ -746,7 +746,7 @@ private fun LegacySettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("Pocket Code", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("PocketDev", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             Text("v1.0.0", color = PocketOrange, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                         Text(

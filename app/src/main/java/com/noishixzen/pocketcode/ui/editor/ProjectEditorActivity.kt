@@ -70,6 +70,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -258,6 +265,7 @@ fun ProjectEditorScreen(
     var showSearchRow by rememberSaveable { mutableStateOf(false) }
     var searchKeyword by rememberSaveable { mutableStateOf("") }
     var saveSuccessFeedback by remember { mutableStateOf(false) }
+    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
 
     fun refreshFileList() {
         if (!workspaceDir.isDirectory) {
@@ -287,6 +295,38 @@ fun ProjectEditorScreen(
                 )
             }
         files = items.sortedWith(compareBy({ !it.isDirectory }, { it.relativePath.lowercase() }))
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch(Dispatchers.IO) {
+                var importedCount = 0
+                for (uri in uris) {
+                    runCatching {
+                        var fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "imported_file"
+                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                                fileName = cursor.getString(nameIndex)
+                            }
+                        }
+                        val destFile = File(workspaceDir, fileName)
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            destFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        importedCount++
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    refreshFileList()
+                    Toast.makeText(context, "Imported $importedCount file${if (importedCount == 1) "" else "s"}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     fun loadFileContent(relativePath: String) {
@@ -460,60 +500,102 @@ fun ProjectEditorScreen(
                     }
                 },
                 actions = {
-                    // Files explorer toggle
-                    IconButton(onClick = { showFileDrawer = true }) {
-                        Icon(Icons.Default.FolderOpen, "Project Files", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-
-                    // Undo
-                    IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty()) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Undo,
-                            "Undo",
-                            tint = if (undoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        )
-                    }
-
-                    // Redo
-                    IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty()) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Redo,
-                            "Redo",
-                            tint = if (redoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        )
-                    }
-
-                    // Search in file
+                    // Search in file (Outside Action 1)
                     IconButton(onClick = { showSearchRow = !showSearchRow }) {
-                        Icon(Icons.Default.Search, "Search text", tint = if (showSearchRow) PocketOrange else MaterialTheme.colorScheme.onSurface)
+                        Icon(
+                            Icons.Default.Search,
+                            "Search text",
+                            tint = if (showSearchRow) PocketOrange else MaterialTheme.colorScheme.onSurface
+                        )
                     }
 
-                    // Save Button
-                    IconButton(
-                        onClick = { saveFile() },
-                        enabled = currentFile.isNotBlank(),
-                    ) {
-                        if (saveSuccessFeedback) {
-                            Icon(Icons.Default.Check, "Saved", tint = Color(0xFF4ADE80))
-                        } else {
-                            Icon(
-                                Icons.Default.Save,
-                                "Save File",
-                                tint = if (isModified) PocketOrange else MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-
-                    // Run & Connect Button (Gradient Accent)
+                    // Run & Connect Button (Outside Action 2)
                     Box(
                         modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(36.dp)
+                            .size(34.dp)
                             .background(OrangeGradient, RoundedCornerShape(10.dp))
                             .clickable { showRunConnectSheet = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.PlayArrow, "Run & Connect", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.PlayArrow, "Run & Connect", tint = Color.White, modifier = Modifier.size(19.dp))
+                    }
+
+                    // More Menu for all other actions (Folders, Save, Undo, Redo, Import, New File/Folder)
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Project Files") },
+                                leadingIcon = { Icon(Icons.Default.FolderOpen, null, tint = PocketOrange) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showFileDrawer = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (isModified) "Save File *" else "Save File") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Save,
+                                        null,
+                                        tint = if (isModified) PocketOrange else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                enabled = currentFile.isNotBlank(),
+                                onClick = {
+                                    showMoreMenu = false
+                                    saveFile()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Undo") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) },
+                                enabled = undoStack.isNotEmpty(),
+                                onClick = {
+                                    showMoreMenu = false
+                                    undo()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Redo") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Redo, null) },
+                                enabled = redoStack.isNotEmpty(),
+                                onClick = {
+                                    showMoreMenu = false
+                                    redo()
+                                }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Import Files") },
+                                leadingIcon = { Icon(Icons.Default.FileUpload, null, tint = PocketOrange) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    importLauncher.launch(arrayOf("*/*"))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New File") },
+                                leadingIcon = { Icon(Icons.Default.NoteAdd, null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showNewFileDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New Folder") },
+                                leadingIcon = { Icon(Icons.Default.CreateNewFolder, null) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showNewFolderDialog = true
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -1214,12 +1296,12 @@ private fun RunConnectModalSheet(
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Command & Console", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
+                    text = { Text("Console", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Live Web Preview", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
+                    text = { Text("Live", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) },
                 )
             }
 
@@ -1260,7 +1342,7 @@ private fun RunConnectModalSheet(
                     ) {
                         Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Run in Console")
+                        Text("Run")
                     }
 
                     OutlinedButton(
@@ -1270,7 +1352,7 @@ private fun RunConnectModalSheet(
                     ) {
                         Icon(Icons.Default.Terminal, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Connect PRoot Terminal", fontSize = 12.sp, maxLines = 1)
+                        Text("Connect")
                     }
                 }
 

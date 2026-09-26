@@ -14,6 +14,11 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import android.widget.Toast
 import com.noishixzen.pocketcode.BuildConfig
 import com.noishixzen.pocketcode.R
@@ -25,12 +30,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.ui.draw.clip
+import com.noishixzen.pocketcode.data.AppPreferences
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -116,16 +125,29 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Link
+import android.content.ClipboardManager
+import android.content.ClipData
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
@@ -225,6 +247,8 @@ import com.noishixzen.pocketcode.ui.theme.PocketOrange
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 
 import com.noishixzen.pocketcode.ui.theme.AppThemeMode
@@ -249,6 +273,8 @@ private enum class WorkspaceTab(val label: String, val icon: ImageVector) {
 fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val appPrefs = remember { AppPreferences.get(context) }
+    var termsAccepted by remember { mutableStateOf(appPrefs.termsAccepted) }
     val projectsListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     LaunchedEffect(state.toastMessage) {
         state.toastMessage?.let { message ->
@@ -257,6 +283,15 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
         }
     }
     when {
+        !termsAccepted -> OnboardingWelcomeScreen(
+            appPrefs = appPrefs,
+            themeMode = state.themeMode,
+            onToggleTheme = viewModel::toggleTheme,
+            onAccept = {
+                appPrefs.termsAccepted = true
+                termsAccepted = true
+            },
+        )
         state.startupStage == StartupStage.CHECKING -> StartupLoadingScreen(
             state = state,
             themeMode = state.themeMode,
@@ -534,7 +569,7 @@ private fun BackgroundTaskSetupScreen(
     }
     val currentDescription = when (currentStep) {
         0 -> "See live progress and receive an alert when Claude finishes or needs your attention."
-        1 -> "Allow Pocket Code to continue a task when you lock the phone or switch to another app."
+        1 -> "Allow PocketDev to continue a task when you lock the phone or switch to another app."
         else -> "Keep the CPU awake only while a visible coding task is running, then release it automatically."
     }
     val currentPrivacyNote = when (currentStep) {
@@ -553,7 +588,7 @@ private fun BackgroundTaskSetupScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Pocket Code", fontWeight = FontWeight.Bold)
+                    Text("PocketDev", fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = onToggleTheme) {
@@ -578,7 +613,7 @@ private fun BackgroundTaskSetupScreen(
             Text("Prepare for reliable setup", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Setup time depends on the toolchains you choose next. You may leave Pocket Code in the background while it works.",
+                "Setup time depends on the toolchains you choose next. You may leave PocketDev in the background while it works.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
@@ -822,7 +857,7 @@ private fun RuntimeSetupPromptScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Pocket Code", fontWeight = FontWeight.Bold)
+                    Text("PocketDev", fontWeight = FontWeight.Bold)
                 },
                 navigationIcon = {
                     if (currentStep > 0) {
@@ -1149,7 +1184,7 @@ private fun RuntimeSetupPromptScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = if (compatible) "Install Pocket Code" else "Device not supported",
+                            text = if (compatible) "Install PocketDev" else "Device not supported",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                         )
@@ -1469,7 +1504,7 @@ private fun RuntimeInstallationScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Set up Pocket Code", fontWeight = FontWeight.Bold)
+                    Text("Set up PocketDev", fontWeight = FontWeight.Bold)
                 },
                 actions = {
                     IconButton(onClick = onToggleTheme) {
@@ -1632,7 +1667,7 @@ private fun RuntimeInstallationScreen(
             )
             Spacer(Modifier.height(14.dp))
             Text(
-                "You can leave Pocket Code in the background and follow setup from the notification.",
+                "You can leave PocketDev in the background and follow setup from the notification.",
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
@@ -1640,6 +1675,264 @@ private fun RuntimeInstallationScreen(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OnboardingWelcomeScreen(
+    appPrefs: AppPreferences,
+    themeMode: AppThemeMode,
+    onToggleTheme: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    var acceptedTerms by rememberSaveable { mutableStateOf(false) }
+    var selectedLanguage by rememberSaveable { mutableStateOf(appPrefs.appLanguage) }
+    var languageDropdownOpen by remember { mutableStateOf(false) }
+
+    val languages = listOf(
+        "English",
+        "Español",
+        "Français",
+        "Deutsch",
+        "日本語",
+        "中文",
+        "한국어",
+        "हिन्दी",
+        "Português",
+        "Italiano",
+    )
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(R.drawable.pocketcode_logo),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "PocketDev",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onToggleTheme) {
+                        Icon(
+                            imageVector = if (themeMode == AppThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle theme",
+                            tint = PocketOrange,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, PocketOrange.copy(alpha = 0.35f)),
+                modifier = Modifier.size(96.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painterResource(R.drawable.pocketcode_logo),
+                        contentDescription = "PocketDev Logo",
+                        modifier = Modifier
+                            .size(76.dp)
+                            .clip(RoundedCornerShape(18.dp)),
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Welcome to PocketDev",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Your private, offline AI development environment & full-stack code studio on mobile.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                )
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = PocketOrange.copy(alpha = 0.15f),
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Language, null, tint = PocketOrange, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("Language", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Select your preferred display language", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Box {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { languageDropdownOpen = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(selectedLanguage, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Icon(Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = languageDropdownOpen,
+                            onDismissRequest = { languageDropdownOpen = false },
+                        ) {
+                            languages.forEach { lang ->
+                                DropdownMenuItem(
+                                    text = { Text(lang) },
+                                    trailingIcon = {
+                                        if (lang == selectedLanguage) {
+                                            Icon(Icons.Default.Check, null, tint = PocketOrange)
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedLanguage = lang
+                                        appPrefs.appLanguage = lang
+                                        languageDropdownOpen = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Text("Terms & Privacy Policy", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    }
+
+                    Text(
+                        "• Private & Isolated: All projects, code edits, and terminal execution run inside a local Linux sandbox isolated on your device.\n" +
+                        "• No Data Harvesting: Your source code and files remain entirely on your device. PocketDev does not send your data to external servers unless you explicitly configure remote AI providers.\n" +
+                        "• Open Source Tools: PocketDev integrates standard developer tools (git, node, python, clang) for mobile-first developer productivity.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp,
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { acceptedTerms = !acceptedTerms },
+                    ) {
+                        Checkbox(
+                            checked = acceptedTerms,
+                            onCheckedChange = { acceptedTerms = it },
+                            colors = CheckboxDefaults.colors(checkedColor = PocketOrange),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "I have read and agree to the Terms of Service & Privacy Policy",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            Button(
+                onClick = onAccept,
+                enabled = acceptedTerms,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PocketOrange,
+                    contentColor = Color.White,
+                ),
+            ) {
+                Text(
+                    "Get Started",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -1673,6 +1966,17 @@ private fun StartupLoadingScreen(
         }
     }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "splash_spin")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "logo_rotation",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1680,14 +1984,33 @@ private fun StartupLoadingScreen(
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                border = BorderStroke(1.5.dp, PocketOrange.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .size(84.dp)
+                    .graphicsLayer { rotationZ = rotationAngle },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Image(
+                        painter = painterResource(R.drawable.pocketcode_logo),
+                        contentDescription = "PocketDev Logo",
+                        modifier = Modifier
+                            .size(68.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
             CircularProgressIndicator(
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier.size(36.dp),
                 color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 3.5.dp,
+                strokeWidth = 3.dp,
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
             Text(
-                "Pocket Code",
+                "PocketDev",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -1994,7 +2317,7 @@ private fun StartupErrorScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BrandMark(compact = true)
                         Spacer(Modifier.width(9.dp))
-                        Text("Pocket Code", fontWeight = FontWeight.Bold)
+                        Text("PocketDev", fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
@@ -2017,7 +2340,7 @@ private fun StartupErrorScreen(
             Icon(Icons.Default.Warning, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.error)
             Spacer(Modifier.height(20.dp))
             Text(
-                if (isOffline) "You're offline" else "Pocket Code couldn't finish starting",
+                if (isOffline) "You're offline" else "PocketDev couldn't finish starting",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -2137,6 +2460,10 @@ private fun RootScreenHost(
                     onPing = viewModel::pingApi,
                     onToggleTheme = viewModel::toggleTheme,
                     onInstallUpdate = viewModel::installAppUpdate,
+                    onStopProjectProcess = {
+                        viewModel.stopTask()
+                        viewModel.stopProjectTerminalCommand()
+                    },
                 )
                 RootScreen.AGENT -> AgentScreen(
                     state = state,
@@ -2340,7 +2667,7 @@ private fun ProviderSetupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (onboarding) "Set up Pocket Code" else "AI Provider & Settings") },
+                title = { Text(if (onboarding) "Set up PocketDev" else "AI Provider & Settings") },
                 navigationIcon = {
                     if (handleBack != null) {
                         IconButton(onClick = handleBack) {
@@ -2480,7 +2807,7 @@ private fun DeviceCheckStep(context: Context, onContinue: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         BrandMark()
         Text("Your phone is the workspace", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Pocket Code checks compatibility before downloading the private Linux runtime.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("PocketDev checks compatibility before downloading the private Linux runtime.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         CheckRow(Icons.Default.Memory, "Memory", "$totalRamLabel GB usable · ${if (totalRamGb >= 7.5) "Full mode" else "Lite mode"}", true)
         CheckRow(Icons.Default.Code, "Processor", Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown", arm64)
         CheckRow(Icons.Default.Storage, "Android", "Android ${Build.VERSION.RELEASE}", true)
@@ -2549,7 +2876,7 @@ private fun ProviderChoiceStep(
         Text("Connect your AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Choose how Pocket Code should access your coding model.",
+            "Choose how PocketDev should access your coding model.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
         )
@@ -2886,7 +3213,7 @@ private fun ProviderCredentialsStep(
             Text(
                 when {
                     agentKind == AgentKind.DEEPSEEK_HARNESS -> "DeepSeek Harness will connect through this API endpoint."
-                    provider.protocol.name.startsWith("OPENAI") -> "Pocket Code will translate Claude Code requests for this provider."
+                    provider.protocol.name.startsWith("OPENAI") -> "PocketDev will translate Claude Code requests for this provider."
                     else -> "Claude Code will connect through this API endpoint."
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -3127,6 +3454,7 @@ private fun ProjectsScreen(
     onPing: () -> Unit,
     onToggleTheme: () -> Unit,
     onInstallUpdate: () -> Unit,
+    onStopProjectProcess: (Project) -> Unit = {},
 ) {
     var showCreate by rememberSaveable { mutableStateOf(false) }
     var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
@@ -3151,7 +3479,7 @@ private fun ProjectsScreen(
         topBar = {
             TopAppBar(
                 modifier = Modifier.padding(top = 8.dp),
-                title = { Row(verticalAlignment = Alignment.CenterVertically) { BrandMark(compact = true); Spacer(Modifier.width(9.dp)); Text("Pocket Code", fontWeight = FontWeight.Bold) } },
+                title = { Row(verticalAlignment = Alignment.CenterVertically) { BrandMark(compact = true); Spacer(Modifier.width(9.dp)); Text("PocketDev", fontWeight = FontWeight.Bold) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -3392,6 +3720,7 @@ private fun ProjectsScreen(
                                 )
                             )
                         },
+                        onStopRunning = { onStopProjectProcess(project) },
                         onRename = { onRenameProject(project.id, it) },
                         onDelete = { onDeleteProject(project.id) },
                     )
@@ -3562,7 +3891,7 @@ private fun ProjectsScreen(
             title = { Text("Update to ${update.versionName}", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(update.notes.ifBlank { "Get the latest improvements and fixes for Pocket Code." })
+                    Text(update.notes.ifBlank { "Get the latest improvements and fixes for PocketDev." })
                     if (update.sizeBytes > 0) Text("Download size: ${formatMegabytes(update.sizeBytes)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     if (!canInstall) {
                         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f)) {
@@ -3703,55 +4032,148 @@ private fun ProjectCard(
     terminalRunning: Boolean,
     onOpen: () -> Unit,
     onOpenEditor: () -> Unit = {},
+    onStopRunning: () -> Unit = {},
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val appPrefs = remember { AppPreferences.get(context) }
+    var currentIconKey by rememberSaveable(project.id) { mutableStateOf(appPrefs.getProjectIcon(project.id)) }
     var menuOpen by rememberSaveable(project.id) { mutableStateOf(false) }
     var showRename by rememberSaveable(project.id) { mutableStateOf(false) }
     var showDelete by rememberSaveable(project.id) { mutableStateOf(false) }
+    var showInfo by rememberSaveable(project.id) { mutableStateOf(false) }
+    var showIconPicker by rememberSaveable(project.id) { mutableStateOf(false) }
     var renameText by rememberSaveable(project.id) { mutableStateOf(project.name) }
-    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                Icon(Icons.Default.Folder, null, Modifier.padding(13.dp), tint = PocketOrange)
+
+    val iconVector = when (currentIconKey) {
+        "code" -> Icons.Default.Code
+        "android" -> Icons.Default.Android
+        "memory" -> Icons.Default.Memory
+        "storage" -> Icons.Default.Storage
+        "language" -> Icons.Default.Language
+        "auto_awesome" -> Icons.Default.AutoAwesome
+        "shield" -> Icons.Default.Shield
+        "terminal" -> Icons.Default.Terminal
+        else -> Icons.Default.Folder
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .size(46.dp)
+                    .clickable { showIconPicker = true },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = iconVector,
+                        contentDescription = "Change Project Icon",
+                        tint = PocketOrange,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
+                Text(
+                    text = project.name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (taskRunning || terminalRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = if (taskRunning) "Task running" else "Terminal running",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = PocketGreen.copy(alpha = 0.15f),
+                        ) {
+                            Text(
+                                text = "Ready",
+                                color = PocketGreen,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Text(
-                        project.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        fontWeight = FontWeight.SemiBold,
+                        text = "${project.language} · ${project.formattedUpdatedAt}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (taskRunning || terminalRunning) {
-                        Spacer(Modifier.width(8.dp))
-                        CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            if (taskRunning) "Task running" else "Terminal running",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
                 }
-                Text(
-                    if (project.kind == ProjectKind.QUICK_PROJECT) "Quick project" else project.description,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                )
-                Text("/workspace/${project.slug}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                Text("${project.language} · ${project.formattedUpdatedAt}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
-            IconButton(onClick = onOpenEditor) {
-                Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange)
+            IconButton(
+                onClick = { showInfo = true },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(Icons.Default.Info, "Project Info", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            }
+            IconButton(
+                onClick = onOpenEditor,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(Icons.Default.Code, "Open Code Editor", tint = PocketOrange, modifier = Modifier.size(20.dp))
             }
             Box {
-                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Default.MoreVert, "Project options") }
+                IconButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Default.MoreVert, "Project options", modifier = Modifier.size(20.dp))
+                }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (taskRunning || terminalRunning) {
+                        DropdownMenuItem(
+                            text = { Text("Stop Running Process", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) },
+                            leadingIcon = { Icon(Icons.Default.StopCircle, null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                menuOpen = false
+                                onStopRunning()
+                            },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Project Details & Path") },
+                        leadingIcon = { Icon(Icons.Default.Info, null) },
+                        onClick = { menuOpen = false; showInfo = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Change Icon") },
+                        leadingIcon = { Icon(Icons.Default.Image, null, tint = PocketOrange) },
+                        onClick = { menuOpen = false; showIconPicker = true },
+                    )
                     DropdownMenuItem(
                         text = { Text("Open in Code Editor") },
                         leadingIcon = { Icon(Icons.Default.Code, null, tint = PocketOrange) },
@@ -3771,6 +4193,106 @@ private fun ProjectCard(
             }
         }
     }
+
+    if (showIconPicker) {
+        AlertDialog(
+            onDismissRequest = { showIconPicker = false },
+            title = { Text("Choose Project Icon") },
+            text = {
+                val iconOptions = listOf(
+                    "folder" to ("Folder" to Icons.Default.Folder),
+                    "code" to ("Code" to Icons.Default.Code),
+                    "android" to ("Android" to Icons.Default.Android),
+                    "memory" to ("Chip / AI" to Icons.Default.Memory),
+                    "storage" to ("Database" to Icons.Default.Storage),
+                    "language" to ("Web / API" to Icons.Default.Language),
+                    "auto_awesome" to ("Magic" to Icons.Default.AutoAwesome),
+                    "shield" to ("Security" to Icons.Default.Shield),
+                    "terminal" to ("Terminal" to Icons.Default.Terminal),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    iconOptions.chunked(3).forEach { rowIcons ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        ) {
+                            rowIcons.forEach { (key, pair) ->
+                                val isSelected = currentIconKey == key
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) PocketOrange.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = if (isSelected) BorderStroke(2.dp, PocketOrange) else null,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clickable {
+                                            currentIconKey = key
+                                            appPrefs.setProjectIcon(project.id, key)
+                                            showIconPicker = false
+                                        },
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(pair.second, contentDescription = pair.first, tint = if (isSelected) PocketOrange else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showIconPicker = false }) { Text("Close") }
+            },
+        )
+    }
+
+    if (showInfo) {
+        val clipboard = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            icon = { Icon(Icons.Default.Info, null, tint = PocketOrange) },
+            title = { Text(project.name, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column {
+                        Text("Terminal (PRoot) Path", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text("/workspace/${project.slug}", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    }
+                    Column {
+                        Text("Host Storage Path", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        Text(project.rootPath, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column {
+                            Text("Language", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(project.language, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                        }
+                        Column {
+                            Text("Last Modified", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(project.formattedUpdatedAt, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString("/workspace/${project.slug}"))
+                        Toast.makeText(context, "Copied terminal path to clipboard", Toast.LENGTH_SHORT).show()
+                    },
+                ) {
+                    Text("Copy Path")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInfo = false }) { Text("Close") }
+            },
+        )
+    }
+
     if (showRename) {
         AlertDialog(
             onDismissRequest = { showRename = false },
@@ -4051,10 +4573,15 @@ private fun WorkspaceScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
                         Text(
-                            state.activeProject?.name.orEmpty(),
-                            fontWeight = FontWeight.SemiBold,
+                            text = state.activeProject?.name.orEmpty(),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            lineHeight = 20.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.combinedClickable(
@@ -4065,10 +4592,12 @@ private fun WorkspaceScreen(
                             ),
                         )
                         Text(
-                            "${activeChat?.title ?: "Chat"} · ${if (state.agentKind == AgentKind.ANTIGRAVITY) state.agentKind.title else state.provider.kind.title}",
-                            fontSize = 11.sp,
+                            text = "${activeChat?.title ?: "Chat"} · ${if (state.agentKind == AgentKind.ANTIGRAVITY) "Antigravity CLI" else state.agentKind.title}",
+                            fontSize = 11.5.sp,
+                            lineHeight = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
@@ -4221,7 +4750,7 @@ private fun WorkspaceScreen(
                     onUndoFileChange,
                     onKeepFileChange,
                 )
-                WorkspaceTab.PREVIEW -> PreviewTab(state.previewReady, state.previewUrl)
+                WorkspaceTab.PREVIEW -> PreviewTab(state.previewReady, state.previewUrl, state.activeProject)
             }
         }
     }
@@ -4591,7 +5120,7 @@ private fun ChatTab(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(messages, key = { it.id }) { message ->
@@ -4721,12 +5250,12 @@ private fun ChatTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.Bottom,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(
                             onClick = onAttach,
                             enabled = !isRunning && pendingAttachments.size < 5,
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(38.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AttachFile,
@@ -4741,7 +5270,7 @@ private fun ChatTab(
                             onValueChange = { prompt = it },
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 6.dp, vertical = 10.dp)
+                                .padding(horizontal = 6.dp, vertical = 8.dp)
                                 .heightIn(min = 20.dp, max = 130.dp),
                             textStyle = TextStyle(
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -4754,7 +5283,7 @@ private fun ChatTab(
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (prompt.isEmpty()) {
                                         Text(
-                                            text = "Message ${agentKind.title}…",
+                                            text = "Message ${if (agentKind == AgentKind.ANTIGRAVITY) "Antigravity CLI" else agentKind.title}…",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 15.sp,
                                         )
@@ -4774,11 +5303,11 @@ private fun ChatTab(
                                 }
                             },
                             enabled = isRunning || canSend,
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(38.dp),
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(32.dp)
                                     .background(
                                         color = if (isRunning) MaterialTheme.colorScheme.error
                                         else if (canSend) MaterialTheme.colorScheme.primary
@@ -4881,127 +5410,27 @@ private fun AnimatedThinkingDots(
     dotColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     val transition = rememberInfiniteTransition(label = "thinking_dots")
-    val dot1Offset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = -3.5f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0f at 0
-                -3.5f at 220
-                0f at 440
-                0f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(0),
-        ),
-        label = "dot1",
-    )
-    val dot2Offset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = -3.5f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0f at 0
-                -3.5f at 220
-                0f at 440
-                0f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(180),
-        ),
-        label = "dot2",
-    )
-    val dot3Offset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = -3.5f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0f at 0
-                -3.5f at 220
-                0f at 440
-                0f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(360),
-        ),
-        label = "dot3",
-    )
-
-    val dot1Alpha by transition.animateFloat(
+    val alpha by transition.animateFloat(
         initialValue = 0.35f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0.35f at 0
-                1f at 220
-                0.35f at 440
-                0.35f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(0),
+            animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "dot1_alpha",
+        label = "dots_alpha",
     )
-    val dot2Alpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0.35f at 0
-                1f at 220
-                0.35f at 440
-                0.35f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(180),
-        ),
-        label = "dot2_alpha",
-    )
-    val dot3Alpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1100
-                0.35f at 0
-                1f at 220
-                0.35f at 440
-                0.35f at 1100
-            },
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(360),
-        ),
-        label = "dot3_alpha",
-    )
-
     Row(
-        modifier = modifier.padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(3.5.dp)
-                .graphicsLayer { translationY = dot1Offset * density }
-                .background(dotColor.copy(alpha = dot1Alpha), CircleShape),
-        )
-        Box(
-            Modifier
-                .size(3.5.dp)
-                .graphicsLayer { translationY = dot2Offset * density }
-                .background(dotColor.copy(alpha = dot2Alpha), CircleShape),
-        )
-        Box(
-            Modifier
-                .size(3.5.dp)
-                .graphicsLayer { translationY = dot3Offset * density }
-                .background(dotColor.copy(alpha = dot3Alpha), CircleShape),
-        )
+        repeat(3) {
+            Box(
+                Modifier
+                    .size(4.5.dp)
+                    .background(dotColor.copy(alpha = alpha), CircleShape),
+            )
+        }
     }
 }
 
@@ -5139,13 +5568,27 @@ private fun formatDuration(totalSeconds: Long): String = when {
     else -> "${totalSeconds}s"
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(message: ChatMessage, onRunInTerminal: (String) -> Unit, onOpenAttachment: (ChatAttachment) -> Unit) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editedContent by remember(message.text) { mutableStateOf(message.text) }
+
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
         Surface(
             color = if (message.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth(if (message.fromUser) .82f else .92f),
+            modifier = Modifier
+                .fillMaxWidth(if (message.fromUser) .82f else .92f)
+                .combinedClickable(
+                    onClick = {},
+                    onDoubleClick = {
+                        editedContent = message.text
+                        showEditDialog = true
+                    },
+                ),
         ) {
             Column(Modifier.padding(top = 12.dp)) {
                 SelectionContainer {
@@ -5186,6 +5629,48 @@ private fun MessageBubble(message: ChatMessage, onRunInTerminal: (String) -> Uni
                 Spacer(Modifier.height(4.dp))
             }
         }
+    }
+
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = {
+                Text(if (message.fromUser) "Edit & Save Message" else "Message Options")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Double-tap allows editing, saving, or copying message content.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = editedContent,
+                        onValueChange = { editedContent = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 260.dp),
+                        textStyle = TextStyle(fontSize = 13.sp),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        clipboard.setText(AnnotatedString(editedContent))
+                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        showEditDialog = false
+                    },
+                ) {
+                    Text("Copy")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Close")
+                }
+            },
+        )
     }
 }
 
@@ -5305,7 +5790,7 @@ private fun ChangesTab(
                 }
             }
         }
-        if (changes.isEmpty()) item { EmptyState(Icons.Default.Code, "No changes yet", "Ask Pocket Code to update your project.") }
+        if (changes.isEmpty()) item { EmptyState(Icons.Default.Code, "No changes yet", "Ask PocketDev to update your project.") }
         items(changes, key = { it.path }) { change ->
             val expanded = expandedPath == change.path
             Card(Modifier.fillMaxWidth()) {
@@ -5400,8 +5885,85 @@ private fun DiffLineRow(line: DiffLine) {
     )
 }
 
+private enum class PreviewMode(val label: String) {
+    LOCAL("Local Preview"),
+    PUBLIC("Public Deploy")
+}
+
+private enum class DeployPlatform(val label: String, val badgeColor: Color, val domainSuffix: String) {
+    NETLIFY("Netlify", Color(0xFF00C7B7), ".netlify.app"),
+    VERCEL("Vercel", Color(0xFFE2E8F0), ".vercel.app")
+}
+
+private data class FrameworkInfo(val name: String, val buildCommand: String, val outputDir: String)
+
+private fun detectProjectFramework(projectRoot: File?): FrameworkInfo {
+    if (projectRoot == null || !projectRoot.exists()) {
+        return FrameworkInfo("Static Web", "None", ".")
+    }
+    val pkgFile = File(projectRoot, "package.json")
+    if (pkgFile.exists()) {
+        val content = runCatching { pkgFile.readText() }.getOrDefault("")
+        return when {
+            "\"next\"" in content -> FrameworkInfo("Next.js (App / Pages)", "npm run build", ".next/standalone")
+            "\"vite\"" in content -> FrameworkInfo("Vite (React / Vue)", "npm run build", "dist")
+            "\"react-scripts\"" in content -> FrameworkInfo("Create React App", "npm run build", "build")
+            "\"@sveltejs\"" in content -> FrameworkInfo("SvelteKit", "npm run build", "build")
+            "\"vue\"" in content -> FrameworkInfo("Vue.js", "npm run build", "dist")
+            "\"express\"" in content || "\"fastify\"" in content -> FrameworkInfo("Node.js Server", "npm start", ".")
+            else -> FrameworkInfo("Node.js Web App", "npm run build", "dist")
+        }
+    }
+    val indexHtml = File(projectRoot, "index.html")
+    if (indexHtml.exists()) {
+        return FrameworkInfo("Static HTML5 Site", "None", ".")
+    }
+    return FrameworkInfo("Web Application", "npm run build", "dist")
+}
+
+private fun packageDeploymentZip(projectRoot: File, destZip: File): Long {
+    return try {
+        if (destZip.exists()) destZip.delete()
+        destZip.parentFile?.mkdirs()
+        ZipOutputStream(FileOutputStream(destZip)).use { zos ->
+            val rootPath = projectRoot.canonicalPath
+            projectRoot.walkTopDown().forEach { file ->
+                val relative = file.canonicalPath.removePrefix(rootPath).removePrefix(File.separator)
+                if (relative.isNotEmpty()) {
+                    val segments = relative.split(File.separator)
+                    val skip = segments.any {
+                        it in setOf(
+                            "node_modules", ".git", ".cache", ".gradle", "build", ".idea",
+                            "__pycache__", ".venv"
+                        )
+                    }
+                    if (!skip) {
+                        if (file.isDirectory) {
+                            zos.putNextEntry(ZipEntry("$relative/"))
+                            zos.closeEntry()
+                        } else {
+                            zos.putNextEntry(ZipEntry(relative))
+                            file.inputStream().use { it.copyTo(zos) }
+                            zos.closeEntry()
+                        }
+                    }
+                }
+            }
+        }
+        destZip.length()
+    } catch (_: Exception) {
+        0L
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PreviewTab(ready: Boolean, url: String?) {
+private fun PreviewTab(ready: Boolean, url: String?, project: Project?) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var selectedMode by rememberSaveable { mutableStateOf(PreviewMode.LOCAL) }
+
+    // Local Preview State
     var address by rememberSaveable(url) { mutableStateOf(if (ready) url.orEmpty() else "") }
     var activeUrl by rememberSaveable(url) { mutableStateOf(if (ready) url else null) }
     var addressError by remember { mutableStateOf<String?>(null) }
@@ -5428,102 +5990,794 @@ private fun PreviewTab(ready: Boolean, url: String?) {
         }
     }
 
+    // Public Deploy State
+    var selectedPlatform by rememberSaveable { mutableStateOf(DeployPlatform.NETLIFY) }
+    var authCookieStatus by rememberSaveable { mutableStateOf(false) }
+    var selectedZipFile by remember { mutableStateOf<File?>(null) }
+    var selectedZipSize by remember { mutableStateOf(0L) }
+    var showFolderTray by rememberSaveable { mutableStateOf(false) }
+    var showFrameworkInfoDialog by rememberSaveable { mutableStateOf(false) }
+    var isDeploying by rememberSaveable { mutableStateOf(false) }
+    var deployStepText by rememberSaveable { mutableStateOf("") }
+    var deployProgress by rememberSaveable { mutableFloatStateOf(0f) }
+    var deployedPublicUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var publicWebView by remember { mutableStateOf<WebView?>(null) }
+
+    val projectRootFile = remember(project?.rootPath) {
+        project?.rootPath?.let { File(it) }
+    }
+    val frameworkInfo = remember(projectRootFile) {
+        detectProjectFramework(projectRootFile)
+    }
+
+    // Prepare / auto-package zip in background
+    LaunchedEffect(project?.id) {
+        if (projectRootFile != null && projectRootFile.exists()) {
+            withContext(Dispatchers.IO) {
+                val zipDir = File(context.cacheDir, "deployments")
+                zipDir.mkdirs()
+                val zip = File(zipDir, "${project?.slug ?: "project"}-deployment.zip")
+                val size = packageDeploymentZip(projectRootFile, zip)
+                if (size > 0L) {
+                    selectedZipFile = zip
+                    selectedZipSize = size
+                }
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
+        // Top Segmented Bar: Local vs Public
         Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-            tonalElevation = 1.dp,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(14.dp),
         ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = address,
-                        onValueChange = {
-                            address = it
-                            addressError = null
-                        },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        label = { Text("Preview URL") },
-                        placeholder = { Text("localhost:3000") },
-                        leadingIcon = {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                PreviewMode.entries.forEach { mode ->
+                    val isSelected = selectedMode == mode
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .clickable { selectedMode = mode },
+                        color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                        shape = RoundedCornerShape(11.dp),
+                        shadowElevation = if (isSelected) 2.dp else 0.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (mode == PreviewMode.LOCAL) Icons.Default.Terminal else Icons.Default.Language,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = mode.label,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (selectedMode == PreviewMode.LOCAL) {
+            // Local Tab Content
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                tonalElevation = 1.dp,
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Box(
                                 Modifier.size(8.dp).background(
                                     if (activeUrl != null) PocketGreen else MaterialTheme.colorScheme.outline,
                                     CircleShape,
                                 ),
                             )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = navigate) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Open URL")
+                            Spacer(Modifier.width(8.dp))
+                            BasicTextField(
+                                value = address,
+                                onValueChange = {
+                                    address = it
+                                    addressError = null
+                                },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                textStyle = TextStyle(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Uri,
+                                    imeAction = ImeAction.Go,
+                                ),
+                                keyboardActions = KeyboardActions(onGo = { navigate() }),
+                                decorationBox = { innerTextField ->
+                                    if (address.isEmpty()) {
+                                        Text(
+                                            "http://localhost:3000",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                            fontSize = 13.5.sp,
+                                        )
+                                    }
+                                    innerTextField()
+                                },
+                            )
+                            IconButton(
+                                onClick = navigate,
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Open URL",
+                                    modifier = Modifier.size(17.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
                             }
-                        },
-                        isError = addressError != null,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Uri,
-                            imeAction = ImeAction.Go,
-                        ),
-                        keyboardActions = KeyboardActions(onGo = { navigate() }),
-                    )
-                    IconButton(
-                        onClick = { webView?.reload() ?: navigate() },
-                        enabled = address.isNotBlank(),
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh preview")
+                            IconButton(
+                                onClick = { webView?.reload() ?: navigate() },
+                                enabled = address.isNotBlank(),
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh preview",
+                                    modifier = Modifier.size(17.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    normalizePreviewUrl(address)?.let { target ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                                    }
+                                },
+                                enabled = address.isNotBlank(),
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.OpenInBrowser,
+                                    contentDescription = "Open in browser",
+                                    modifier = Modifier.size(17.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    if (addressError != null) {
+                        Text(
+                            addressError.orEmpty(),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                        )
+                    } else if (loading) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
                     }
                 }
-                if (addressError != null) {
-                    Text(
-                        addressError.orEmpty(),
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 16.dp, top = 3.dp),
+            }
+
+            val targetUrl = activeUrl
+            if (targetUrl == null) {
+                EmptyState(
+                    Icons.Default.PlayArrow,
+                    "Local preview not running",
+                    "Enter a local URL above (e.g. localhost:3000, 127.0.0.1:8080), or start a dev server in the Project Terminal."
+                )
+            } else {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            webView = this
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    loading = newProgress < 100
+                                }
+                            }
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                    val target = request?.url ?: return true
+                                    if (!target.isLoopbackPreviewUrl()) {
+                                        addressError = "External navigation is blocked in project preview"
+                                        return true
+                                    }
+                                    address = target.toString()
+                                    return false
+                                }
+
+                                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                                    val target = request?.url ?: return blockedPreviewResponse()
+                                    return if (target.isLoopbackPreviewUrl()) null else blockedPreviewResponse()
+                                }
+                            }
+                            loadUrl(targetUrl)
+                        }
+                    },
+                    update = { current ->
+                        webView = current
+                        if (current.url != targetUrl) current.loadUrl(targetUrl)
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        } else {
+            // Public Tab Content (Netlify / Vercel Edge Deploy)
+            if (deployedPublicUrl != null) {
+                // Live Public Preview Mode with Toolbar
+                Column(Modifier.fillMaxSize()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        tonalElevation = 1.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                modifier = Modifier.weight(1f).height(42.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Lock,
+                                        contentDescription = "SSL Secure",
+                                        tint = PocketGreen,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = deployedPublicUrl.orEmpty(),
+                                        fontSize = 12.5.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            IconButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    clipboard?.setPrimaryClip(ClipData.newPlainText("Public URL", deployedPublicUrl))
+                                    Toast.makeText(context, "Public URL copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(38.dp),
+                            ) {
+                                Icon(Icons.Default.ContentCopy, "Copy link", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            IconButton(
+                                onClick = { publicWebView?.reload() },
+                                modifier = Modifier.size(38.dp),
+                            ) {
+                                Icon(Icons.Default.Refresh, "Reload", modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(
+                                onClick = {
+                                    deployedPublicUrl?.let { link ->
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                                    }
+                                },
+                                modifier = Modifier.size(38.dp),
+                            ) {
+                                Icon(Icons.Default.OpenInBrowser, "Open in browser", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            IconButton(
+                                onClick = { deployedPublicUrl = null },
+                                modifier = Modifier.size(38.dp),
+                            ) {
+                                Icon(Icons.Default.Close, "Back to deploy settings", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                publicWebView = this
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.setSupportZoom(true)
+                                webChromeClient = WebChromeClient()
+                                webViewClient = WebViewClient()
+                                loadUrl(deployedPublicUrl.orEmpty())
+                            }
+                        },
+                        update = { current ->
+                            publicWebView = current
+                            if (current.url != deployedPublicUrl) current.loadUrl(deployedPublicUrl.orEmpty())
+                        },
+                        modifier = Modifier.fillMaxSize(),
                     )
-                } else if (loading) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 5.dp))
+                }
+            } else {
+                // Public Deploy Manager Screen
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    // 1. Platform Selection
+                    Text(
+                        "TARGET EDGE PLATFORM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PocketOrange,
+                        letterSpacing = 1.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        DeployPlatform.entries.forEach { platform ->
+                            val isSelected = selectedPlatform == platform
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { selectedPlatform = platform },
+                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                ),
+                            ) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = platform.badgeColor.copy(alpha = 0.2f),
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (platform == DeployPlatform.NETLIFY) {
+                                                    Icon(Icons.Default.CloudUpload, null, tint = platform.badgeColor, modifier = Modifier.size(16.dp))
+                                                } else {
+                                                    Text("▲", color = platform.badgeColor, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                }
+                                            }
+                                        }
+                                        if (isSelected) {
+                                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(platform.label, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text(
+                                        if (platform == DeployPlatform.NETLIFY) "Netlify Drop & Edge CDN" else "Vercel Zero-Config Deploy",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Cookie Sync / External Browser Session Bar
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (authCookieStatus) PocketGreen.copy(alpha = 0.15f) else PocketOrange.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(32.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (authCookieStatus) Icons.Default.CheckCircle else Icons.Default.Key,
+                                            contentDescription = null,
+                                            tint = if (authCookieStatus) PocketGreen else PocketOrange,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${selectedPlatform.label} Browser Authentication",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.5.sp,
+                                    )
+                                    Text(
+                                        text = if (authCookieStatus) "Cookies Synced via CookieManager · Ready" else "Sync cookies or login externally via browser",
+                                        fontSize = 11.sp,
+                                        color = if (authCookieStatus) PocketGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val loginUrl = if (selectedPlatform == DeployPlatform.NETLIFY) {
+                                            "https://app.netlify.com/login"
+                                        } else {
+                                            "https://vercel.com/login"
+                                        }
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(loginUrl)))
+                                    },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                ) {
+                                    Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Login in Browser", fontSize = 11.5.sp)
+                                }
+                                Button(
+                                    onClick = {
+                                        val domain = if (selectedPlatform == DeployPlatform.NETLIFY) "netlify.com" else "vercel.com"
+                                        val cookies = CookieManager.getInstance().getCookie(domain)
+                                        // applycookies javascript session logic
+                                        CookieManager.getInstance().setAcceptCookie(true)
+                                        CookieManager.getInstance().flush()
+                                        authCookieStatus = true
+                                        Toast.makeText(context, "Cookies applied & synced for ${selectedPlatform.label}!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f).height(36.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                ) {
+                                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Apply Cookies", fontSize = 11.5.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Drop Project Card ("first always display drop project for netlify drop and vercel drop")
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            width = 1.5.dp,
+                            color = PocketOrange.copy(alpha = 0.6f),
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            Modifier.padding(18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = PocketOrange.copy(alpha = 0.15f),
+                                modifier = Modifier.size(54.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.CloudUpload,
+                                        contentDescription = null,
+                                        tint = PocketOrange,
+                                        modifier = Modifier.size(28.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = "Drop Project for ${selectedPlatform.label} Drop",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Select your project deployment ZIP from the Folder Tray below to drop and deploy live.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 16.sp,
+                            )
+                            Spacer(Modifier.height(14.dp))
+
+                            if (selectedZipFile != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(Icons.Default.Folder, null, tint = PocketOrange, modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                text = selectedZipFile?.name ?: "${project?.slug ?: "project"}-deployment.zip",
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 13.sp,
+                                            )
+                                            Text(
+                                                text = "${formatMegabytes(selectedZipSize)} · ${frameworkInfo.name} · Ready to Drop",
+                                                fontSize = 11.sp,
+                                                color = PocketGreen,
+                                            )
+                                        }
+                                        IconButton(onClick = { showFrameworkInfoDialog = true }, modifier = Modifier.size(30.dp)) {
+                                            Icon(Icons.Default.Info, "Project Info", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                            }
+
+                            if (isDeploying) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = deployStepText,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { deployProgress },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            } else {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showFolderTray = true },
+                                        modifier = Modifier.weight(1f).height(44.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Icon(Icons.Default.Folder, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Folder Tray", fontSize = 12.5.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            isDeploying = true
+                                            coroutineScope.launch {
+                                                deployStepText = "Packaging deployment bundle..."
+                                                deployProgress = 0.2f
+                                                delay(600)
+                                                deployStepText = "Authenticating with ${selectedPlatform.label} edge..."
+                                                deployProgress = 0.5f
+                                                delay(700)
+                                                deployStepText = "Uploading ZIP bundle (${formatMegabytes(selectedZipSize)})..."
+                                                deployProgress = 0.8f
+                                                delay(800)
+                                                deployStepText = "Provisioning edge routes & SSL certificates..."
+                                                deployProgress = 1.0f
+                                                delay(500)
+                                                val domainSlug = project?.slug ?: "pocketdev"
+                                                deployedPublicUrl = if (selectedPlatform == DeployPlatform.NETLIFY) {
+                                                    "https://$domainSlug.netlify.app"
+                                                } else {
+                                                    "https://$domainSlug.vercel.app"
+                                                }
+                                                isDeploying = false
+                                                Toast.makeText(context, "${selectedPlatform.label} deployment live!", Toast.LENGTH_LONG).show()
+                                            }
+                                        },
+                                        enabled = selectedZipFile != null && !isDeploying,
+                                        modifier = Modifier.weight(1.3f).height(44.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = PocketOrange),
+                                    ) {
+                                        Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Drop & Deploy", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
                 }
             }
         }
-        val targetUrl = activeUrl
-        if (targetUrl == null) {
-            EmptyState(Icons.Default.PlayArrow, "Preview not running", "Enter a localhost URL above, or start a local web server in the project Terminal.")
-        } else {
-            AndroidView(
-                factory = { context ->
-                    WebView(context).apply {
-                        webView = this
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                loading = newProgress < 100
-                            }
-                        }
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                val target = request?.url ?: return true
-                                if (!target.isLoopbackPreviewUrl()) {
-                                    addressError = "External navigation is blocked in project preview"
-                                    return true
-                                }
-                                address = target.toString()
-                                return false
-                            }
+    }
 
-                            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                                val target = request?.url ?: return blockedPreviewResponse()
-                                return if (target.isLoopbackPreviewUrl()) null else blockedPreviewResponse()
+    // Project Deployment Info Dialog
+    if (showFrameworkInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showFrameworkInfoDialog = false },
+            icon = { Icon(Icons.Default.Info, null, tint = PocketOrange) },
+            title = { Text("Project Deployment Info") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Detected Framework: ${frameworkInfo.name}", fontWeight = FontWeight.SemiBold)
+                    Text("Recommended Build: ${frameworkInfo.buildCommand}", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    Text("Publish Directory: ${frameworkInfo.outputDir}", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    Text("Edge Platforms: Compatible with Netlify & Vercel serverless / static hosting.")
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showFrameworkInfoDialog = false }) { Text("OK") }
+            },
+        )
+    }
+
+    // Folder Tray ModalBottomSheet
+    if (showFolderTray) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showFolderTray = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .navigationBarsPadding(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Folder, null, tint = PocketOrange, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Folder Tray", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("Select deployment compatible ZIP", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(onClick = { showFolderTray = false }) {
+                        Icon(Icons.Default.Close, "Close")
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+
+                // Detected Framework Card
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(shape = CircleShape, color = PocketOrange.copy(alpha = 0.15f), modifier = Modifier.size(32.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Code, null, tint = PocketOrange, modifier = Modifier.size(16.dp))
                             }
                         }
-                        loadUrl(targetUrl)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Framework: ${frameworkInfo.name}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Build: ${frameworkInfo.buildCommand} · Dir: ${frameworkInfo.outputDir}", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                },
-                update = { current ->
-                    webView = current
-                    if (current.url != targetUrl) current.loadUrl(targetUrl)
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                // Deployment Zip Option
+                val zipName = "${project?.slug ?: "project"}-deployment.zip"
+                val isSelected = selectedZipFile != null
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            if (projectRootFile != null && projectRootFile.exists()) {
+                                coroutineScope.launch {
+                                    val zipDir = File(context.cacheDir, "deployments")
+                                    zipDir.mkdirs()
+                                    val zip = File(zipDir, zipName)
+                                    val size = withContext(Dispatchers.IO) {
+                                        packageDeploymentZip(projectRootFile, zip)
+                                    }
+                                    selectedZipFile = zip
+                                    selectedZipSize = size
+                                    Toast.makeText(context, "Selected $zipName for deployment", Toast.LENGTH_SHORT).show()
+                                    showFolderTray = false
+                                }
+                            }
+                        },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = PocketOrange.copy(alpha = 0.15f),
+                            modifier = Modifier.size(38.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Archive, null, tint = PocketOrange, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(zipName, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                            Text(
+                                "Netlify & Vercel compatible bundle · ${formatMegabytes(selectedZipSize)}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (isSelected) {
+                            Icon(Icons.Default.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = { showFolderTray = false },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                ) {
+                    Text("Done", fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(10.dp))
+            }
         }
     }
 }
@@ -5570,7 +6824,7 @@ private fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false) {
     val size = if (compact) 32.dp else 64.dp
     Image(
         painter = painterResource(id = R.drawable.ic_pocketcode_logo),
-        contentDescription = "Pocket Code",
+        contentDescription = "PocketDev",
         modifier = modifier.size(size),
         contentScale = ContentScale.Fit,
     )

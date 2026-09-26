@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,8 +79,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1186,12 +1189,24 @@ private fun AgentAntigravityCard(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 AntigravityAuthStatus.AWAITING_CODE -> {
+                    val uriHandler = LocalUriHandler.current
                     auth.authorizationUrl?.let { url ->
+                        Button(
+                            onClick = { runCatching { uriHandler.openUri(url) } },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Default.OpenInBrowser, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Open Sign-in in Browser")
+                        }
                         OutlinedButton(
                             onClick = { clipboard.setText(AnnotatedString(url)) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                         ) {
+                            Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text("Copy Google Sign-in URL")
                         }
                     }
